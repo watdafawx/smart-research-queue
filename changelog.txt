@@ -1,0 +1,34 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.1.1
+Date: 2026-10-03
+  Optimizations:
+    - A finished research no longer re-reads every technology's prerequisites and ingredients through the
+      game API: they are cached once per load, and auto research picks from the states just computed
+      (a stutter on every research with big modpacks)
+---------------------------------------------------------------------------------------------------
+Version: 1.1.0
+Date: 2026-10-02
+  Features:
+    - Reorder the queue: Ctrl + click a queued technology, then click where it goes
+    - The first 7 startable entries are mirrored into the game's research queue; dragging or adding
+      there (technology screen, graph button) updates this queue
+    - Moves keep the queue researchable: prerequisites come along in front, dependents behind
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 2026-10-02
+  Features:
+    - Fork of Ultimate Research Queue for 2.x 2.0.9 with Auto Research built in (side panel)
+    - Auto research picks from goals first, then by strategy (balanced, fast, slow, cheap, expensive, random)
+    - Allowed science packs, optionally only packs made in the last hour; filter the technology list by them
+    - Goals and blacklist, managed from the technology details and the side panel
+    - Allow switching, goals only, infinite technologies last, announce completed research
+    - Default goals and blacklist from per-player settings; Auto Research's remote interface
+  Bugfixes:
+    - Crash opening technologies that unlock space platforms (nil effect button)
+    - Double-click to queue often missed (window was 20 ticks; now 30 = Windows' default)
+    - Multi-level queue entries reset to the first level after a mod update
+    - Negative time estimates right after the research changed
+    - "Requires player action" repeated on every update; trigger technologies now stay queued while the
+      labs work on the next startable entry
+    - Queue limit raised from 49 to 280 (deep prerequisite chains in overhauls)
+    - Removed the unused "print message on research completed" setting (now a panel option)

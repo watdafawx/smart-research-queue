@@ -1,0 +1,8 @@
+{
+  "name": "srq-test",
+  "version": "0.0.1",
+  "title": "Smart Research Queue test",
+  "author": "mtopfox",
+  "factorio_version": "2.0",
+  "dependencies": ["base", "smart-research-queue"]
+}

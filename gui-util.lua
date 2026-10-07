@@ -375,7 +375,9 @@ end
 function gui_util.update_technology_slot(button, technology, level, research_state, in_queue, is_selected)
   local properties = gui_util.get_technology_slot_properties(technology, research_state)
   local tags = button.tags
-  button.style = properties.style
+  if not tags.srq_gap then  -- (a slot being dragged is an empty cell until the drop)
+    button.style = properties.style
+  end
   button.toggled = is_selected or false
   if tags.research_state ~= research_state then
     if research_state == constants.research_state.researched then

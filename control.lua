@@ -508,4 +508,7 @@ drag.register(function(player, payload, target)
     research_queue.move(queue, node, to)
   end
   gui.update_queue(self)
+end, function(player)
+  local self = gui.get(player.index)
+  if self then gui.update_queue(self) end
 end)

@@ -1,6 +1,7 @@
 """Drag to reorder in a real client through the fnative loader (vanilla + flib + fnative-std + this mod + a driver
 with a mocked mouse). Screenshots: test/run/script-output/srq-drag-*.png. The game window closes itself."""
 import json, os, shutil, subprocess, sys, time
+MANUAL = "--manual" in sys.argv  # real mouse: window stays open, no mocked drag
 from pathlib import Path
 
 from factorio_paths import PATHS
@@ -20,7 +21,7 @@ shutil.rmtree(MODS, ignore_errors=True)
 MODS.mkdir(parents=True)
 shutil.copytree(MOD, MODS / "smart-research-queue", ignore=shutil.ignore_patterns("test", ".git"))
 shutil.copytree(FNATIVE / "mods" / "fnative-std", MODS / "fnative-std")
-shutil.copytree(HERE / "srq-dragtest", MODS / "srq-dragtest")
+shutil.copytree(HERE / ("srq-dragmanual" if MANUAL else "srq-dragtest"), MODS / "srq-dragtest")
 (MODS / "srq-dragtest" / "info.json").write_text(json.dumps({"name": "srq-dragtest", "version": "0.0.1",
     "title": "srq drag test", "author": "mtopfox", "factorio_version": "2.0", "dependencies": ["base", "smart-research-queue"]}))
 shutil.copy(max(PATHS["user_mods"].glob("flib_*.zip")), MODS)
@@ -33,6 +34,9 @@ save.unlink(missing_ok=True)
 launch = [str(FNATIVE / "dist" / "factorio-native.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+if MANUAL:
+    print("game running, mods:", MODS)
+    sys.exit()
 start = time.time()
 while time.time() - start < 240 and not (OUT / "srq-drag-done.txt").exists() and game.poll() is None:
     time.sleep(1)

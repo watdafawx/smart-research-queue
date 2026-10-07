@@ -52,6 +52,20 @@ styles.urq_technology_slot_duration_label = {
   vertical_align = "bottom",
 }
 
+-- the dragged queue slot while it is being dragged: an empty cell (a technology slot is 72 x 100)
+styles.srq_slot_gap = {
+  type = "button_style",
+  default_graphical_set = {},
+  hovered_graphical_set = {},
+  clicked_graphical_set = {},
+  selected_graphical_set = {},
+  selected_hovered_graphical_set = {},
+  selected_clicked_graphical_set = {},
+  disabled_graphical_set = {},
+  size = { 72, 100 },
+  padding = 0,
+}
+
 styles.urq_tech_list_scroll_pane = {
   type = "scroll_pane_style",
   parent = "flib_naked_scroll_pane_no_padding",

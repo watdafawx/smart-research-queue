@@ -12,8 +12,8 @@ ROOT = MOD.parent
 from factorio_paths import run_dir  # noqa: E402
 RUN = run_dir(Path(__file__).resolve().parent / "run")
 MODS = RUN / "srq-drag-mods"
-# an fnative checkout, built (https://github.com/watdafawx/fnative): FNATIVE_DIR, else native/ beside this mod
-FNATIVE = Path(os.environ.get("FNATIVE_DIR") or ROOT / "native")
+# an fnative checkout, built (https://github.com/watdafawx/fnative): FNATIVE_DIR, else an fnative/ beside a folder above
+FNATIVE = Path(os.environ.get("FNATIVE_DIR") or next((d / "fnative" for d in MOD.parents if (d / "fnative").exists()), ROOT / "fnative"))
 if not (FNATIVE / "dist" / "factorio-native.exe").exists():
     sys.exit(f"needs a built fnative at {FNATIVE} (set FNATIVE_DIR)")
 OUT = RUN / "script-output"

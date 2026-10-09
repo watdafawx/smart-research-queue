@@ -573,7 +573,7 @@ function gui.update_queue(self)
   for i = i + 1, #children do
     children[i].destroy()
   end
-  -- (with the fnative loader: drag a queued technology onto another to move it there)
+  -- (with the fse loader: drag a queued technology onto another to move it there)
   for _, button in pairs(queue_table.children) do
     drag.mark(button, button.name)
   end

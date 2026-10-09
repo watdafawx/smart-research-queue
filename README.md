@@ -6,7 +6,7 @@ queue with [Auto Research](https://mods.factorio.com/mod/auto-research) built in
 - **Queue** technologies; their prerequisites come along. The first entries are mirrored into the game's own
   research queue, and changes made there come back.
 - **Reorder**: Ctrl + click a queued technology, then click where it goes. With the
-  [fnative](https://github.com/watdafawx/fnative) loader and its `fnative-std` mod, you can drag entries instead.
+  [FSE](https://github.com/watdafawx/fse) loader and its `fse-std` mod, you can drag entries instead.
   Moves keep the queue researchable: prerequisites stay in front, dependents behind.
 - **Auto research** (side panel): when the queue runs dry, research continues from your **goals** first, then by
   strategy (balanced, fast, slow, cheap, expensive, random), using only the science packs you allow, or only the

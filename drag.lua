@@ -1,13 +1,13 @@
--- Drag to reorder the queue: with the fnative loader's std plugin, through the fnative-std library mod (an optional
+-- Drag to reorder the queue: with the fse loader's std plugin, through the fse-std library mod (an optional
 -- dependency). Without them nothing here does anything, and the queue keeps its own way: Ctrl + click picks a
 -- technology up, a click on another drops it there.
 
 local M = {}
-local has_std = script.active_mods["fnative-std"] ~= nil
+local has_std = script.active_mods["fse-std"] ~= nil
 local dnd, input
 if has_std then
-  dnd = require("__fnative-std__/dnd")
-  input = require("__fnative-std__/input")
+  dnd = require("__fse-std__/dnd")
+  input = require("__fse-std__/input")
 end
 
 function M.active()

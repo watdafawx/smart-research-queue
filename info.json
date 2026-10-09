@@ -1,6 +1,6 @@
 {
   "name": "smart-research-queue",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "title": "Smart Research Queue",
   "description": "Ultimate Research Queue's GUI with Auto Research built in: queue technologies (prerequisites included) and, when the queue runs dry, pick the next research from your goals or by strategy, limited to the science packs you allow or actually produce. Fork of Ultimate Research Queue for 2.x and Auto Research (both MIT).",
   "author": "mtopfox",
@@ -9,7 +9,7 @@
     "base >= 2.0.28",
     "flib >= 0.16.1",
     "? RecipeBook >= 4.0.0",
-    "? fnative-std",
+    "? fse-std",
     "! UltimateResearchQueue2",
     "! UltimateResearchQueue",
     "! sonaxaton-research-queue",

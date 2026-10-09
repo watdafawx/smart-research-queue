@@ -1,4 +1,4 @@
--- drags a queued technology onto another in a real client with a mocked mouse (fnative std plugin)
+-- drags a queued technology onto another in a real client with a mocked mouse (fse std plugin)
 local out = {}
 local function say(s) out[#out + 1] = s end
 local function q()

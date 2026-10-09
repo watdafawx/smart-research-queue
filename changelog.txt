@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.5
+Date: 2026-10-09
+  Changes:
+    - Drag to reorder: the optional loader library is now fse-std (the fnative loader was renamed to FSE)
+---------------------------------------------------------------------------------------------------
 Version: 1.1.1
 Date: 2026-10-03
   Optimizations:

@@ -491,7 +491,7 @@ remote.add_interface("srq", {
   end,
 })
 
--- Drag to reorder (fnative loader): chained onto the handlers above, so it goes last
+-- Drag to reorder (fse loader): chained onto the handlers above, so it goes last
 local drag = require("drag")
 local flib_technology_drag = require("__flib__.technology")
 drag.register(function(player, payload, target)

@@ -1,4 +1,4 @@
-"""Drag to reorder in a real client through the fnative loader (vanilla + flib + fnative-std + this mod + a driver
+"""Drag to reorder in a real client through the fse loader (vanilla + flib + fse-std + this mod + a driver
 with a mocked mouse). Screenshots: test/run/script-output/srq-drag-*.png. The game window closes itself."""
 import json, os, shutil, subprocess, sys, time
 MANUAL = "--manual" in sys.argv  # real mouse: window stays open, no mocked drag
@@ -12,26 +12,26 @@ ROOT = MOD.parent
 from factorio_paths import run_dir  # noqa: E402
 RUN = run_dir(Path(__file__).resolve().parent / "run")
 MODS = RUN / "srq-drag-mods"
-# an fnative checkout, built (https://github.com/watdafawx/fnative): FNATIVE_DIR, else an fnative/ beside a folder above
-FNATIVE = Path(os.environ.get("FNATIVE_DIR") or next((d / "fnative" for d in MOD.parents if (d / "fnative").exists()), ROOT / "fnative"))
-if not (FNATIVE / "dist" / "factorio-native.exe").exists():
-    sys.exit(f"needs a built fnative at {FNATIVE} (set FNATIVE_DIR)")
+# an fse checkout, built (https://github.com/watdafawx/fse): FSE_DIR, else an fse/ beside a folder above
+FSE = Path(os.environ.get("FSE_DIR") or next((d / "fse" for d in MOD.parents if (d / "fse").exists()), ROOT / "fse"))
+if not (FSE / "dist" / "fse.exe").exists():
+    sys.exit(f"needs a built fse at {FSE} (set FSE_DIR)")
 OUT = RUN / "script-output"
 shutil.rmtree(MODS, ignore_errors=True)
 MODS.mkdir(parents=True)
 shutil.copytree(MOD, MODS / "smart-research-queue", ignore=shutil.ignore_patterns("test", ".git"))
-shutil.copytree(FNATIVE / "mods" / "fnative-std", MODS / "fnative-std")
+shutil.copytree(FSE / "mods" / "fse-std", MODS / "fse-std")
 shutil.copytree(HERE / ("srq-dragmanual" if MANUAL else "srq-dragtest"), MODS / "srq-dragtest")
 (MODS / "srq-dragtest" / "info.json").write_text(json.dumps({"name": "srq-dragtest", "version": "0.0.1",
     "title": "srq drag test", "author": "mtopfox", "factorio_version": "2.0", "dependencies": ["base", "smart-research-queue"]}))
 shutil.copy(max(PATHS["user_mods"].glob("flib_*.zip")), MODS)
-names = ["base", "elevated-rails", "quality", "space-age", "flib", "fnative-std", "smart-research-queue", "srq-dragtest"]
+names = ["base", "elevated-rails", "quality", "space-age", "flib", "fse-std", "smart-research-queue", "srq-dragtest"]
 (MODS / "mod-list.json").write_text(json.dumps({"mods": [{"name": n, "enabled": True} for n in names]}))
 for f in OUT.glob("srq-drag-*"):
     f.unlink()
 save = RUN / "srq-drag.zip"
 save.unlink(missing_ok=True)
-launch = [str(FNATIVE / "dist" / "factorio-native.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
+launch = [str(FSE / "dist" / "fse.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 if MANUAL:

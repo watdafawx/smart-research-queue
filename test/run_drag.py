@@ -14,7 +14,7 @@ RUN = run_dir(Path(__file__).resolve().parent / "run")
 MODS = RUN / "srq-drag-mods"
 # an fse checkout, built (https://github.com/watdafawx/fse): FSE_DIR, else an fse/ beside a folder above
 FSE = Path(os.environ.get("FSE_DIR") or next((d / "fse" for d in MOD.parents if (d / "fse").exists()), ROOT / "fse"))
-if not (FSE / "dist" / "fse.exe").exists():
+if not (FSE / "dist" / "fse-launcher.exe").exists():
     sys.exit(f"needs a built fse at {FSE} (set FSE_DIR)")
 OUT = RUN / "script-output"
 shutil.rmtree(MODS, ignore_errors=True)
@@ -31,7 +31,7 @@ for f in OUT.glob("srq-drag-*"):
     f.unlink()
 save = RUN / "srq-drag.zip"
 save.unlink(missing_ok=True)
-launch = [str(FSE / "dist" / "fse.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
+launch = [str(FSE / "dist" / "fse-launcher.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 if MANUAL:

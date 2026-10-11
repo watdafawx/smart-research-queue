@@ -17,6 +17,12 @@ queue with [Auto Research](https://mods.factorio.com/mod/auto-research) built in
 Replaces Ultimate Research Queue and Auto Research (marked incompatible, so the game won't load them together).
 Works with big modpacks: technology data is cached once per load.
 
+## Themes
+
+The research queue window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before.
+
+![The research queue window in Vulcanus and Aquilo](images/themes.jpg)
+
 ## Install
 
 Copy this folder into your mods folder (`%APPDATA%\Factorio\mods`) as `smart-research-queue`, or clone it there:

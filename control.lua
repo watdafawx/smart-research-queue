@@ -409,6 +409,16 @@ remote.add_interface("auto_research", {
 
 -- Read and drive the queue and auto research from other mods (and the test harness)
 remote.add_interface("srq", {
+  -- opens the queue window for a player (a script opening the research screen doesn't raise on_gui_opened, so it
+  -- can't be swapped for this window): show(player_index, technology name?)
+  show = function(player_index, tech_name)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.show(player_gui, tech_name) end
+  end,
+  hide = function(player_index)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.hide(player_gui) end
+  end,
   --- @return {name: string, level: uint, auto: boolean}[]
   queue = function(force_name)
     local force_table = force_table_of(force_name)

@@ -512,3 +512,6 @@ end, function(player)
   local self = gui.get(player.index)
   if self then gui.update_queue(self) end
 end)
+
+-- themes (fse-std, optional): restyles the window when the player picks another theme
+if gui.theme_handlers then require("__fse-std__/safe").chain("smart-research-queue", { gui.theme_handlers }) end

@@ -10,6 +10,13 @@ local auto = require("auto-research")
 local constants = require("constants")
 local gui_util = require("gui-util")
 local research_queue = require("research-queue")
+
+-- themes (fse-std 0.6+, optional): the window in the player's theme from fse-std's theme window
+local theme
+if script.active_mods["fse-std"] then
+  local ok, t = pcall(require, "__fse-std__/theme")
+  theme = ok and t.adopt and t or nil
+end
 local util = require("util")
 
 --- @class GuiElems
@@ -443,7 +450,11 @@ function gui.update(self)
   gui.update_tech_list(self)
   gui.filter_tech_list(self)
   gui.update_durations_and_progress(self)
+  if theme and self.elems.urq_window and self.elems.urq_window.valid then theme.adopt(self.elems.urq_window) end
 end
+
+--- the theme's event handlers (nil without fse-std's themes): control.lua chains them on
+gui.theme_handlers = theme and theme.handlers
 
 --- @param self Gui
 function gui.update_durations_and_progress(self)

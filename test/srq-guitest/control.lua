@@ -41,7 +41,43 @@ script.on_event(defines.events.on_tick, function(e)
       game.take_screenshot({ player = player, show_gui = true, path = shot.file, resolution = { 2560, 1440 }, zoom = 1 })
     end
   end
-  if e.tick == 260 then
+  -- with fse-std (run_gui.py --themed): the settings behind the gear, Auto Research as a drawer, inside again, the
+  -- queue's Clear asking first
+  local themed = script.active_mods["fse-std"] ~= nil
+  local screen = player.gui.screen
+  local function log(t) helpers.write_file("srq-gui.txt", t .. "\n", true) end
+  local function shoot(file) game.take_screenshot({ player = player, show_gui = true, path = file, resolution = { 2560, 1440 }, zoom = 1 }) end
+  if themed and e.tick == 210 then
+    helpers.write_file("srq-gui.txt", "", false)
+    log("drawer: " .. tostring(screen.urq_window__auto ~= nil and screen.urq_window__auto.visible))
+    log("gear: " .. tostring(screen.urq_window and #screen.urq_window.children > 0))
+    remote.call("srq", "settings", 1)
+  elseif themed and e.tick == 215 then
+    log("settings: " .. tostring(screen.urq_window__menu ~= nil) .. ", window still open: " .. tostring(screen.urq_window.visible))
+  elseif themed and e.tick == 230 then
+    shoot("srq-gui-settings.png")
+  elseif themed and e.tick == 260 then
+    remote.call("srq", "docked", 1, false)
+  elseif themed and e.tick == 270 then
+    log("inside: drawer " .. tostring(screen.urq_window__auto ~= nil) .. ", window " .. tostring(screen.urq_window.visible))
+  elseif themed and e.tick == 290 then
+    shoot("srq-gui-inside.png")
+  elseif themed and e.tick == 320 then
+    remote.call("srq", "docked", 1, true)
+    remote.call("srq", "push", player.force.name, "steel-processing")
+  elseif themed and e.tick == 330 then
+    remote.call("srq", "press_clear", 1)
+  elseif themed and e.tick == 335 then
+    log("clear asks: " .. tostring(screen["fstd_confirm_srq_clear"] ~= nil) .. ", queue kept: "
+      .. tostring(#remote.call("srq", "queue", player.force.name) > 0) .. ", window still open: " .. tostring(screen.urq_window.visible))
+  elseif themed and e.tick == 355 then
+    shoot("srq-gui-clear.png")
+  elseif themed and e.tick == 380 then
+    remote.call("srq", "hide", 1)
+  elseif themed and e.tick == 385 then
+    log("hidden: drawer hidden " .. tostring(not (screen.urq_window__auto and screen.urq_window__auto.visible)))
+  end
+  if e.tick == (themed and 400 or 260) then
     helpers.write_file("srq-gui-done.txt", "done")
   end
 end)

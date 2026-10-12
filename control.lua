@@ -419,6 +419,19 @@ remote.add_interface("srq", {
     local player_gui = gui.get(player_index)
     if player_gui then gui.hide(player_gui) end
   end,
+  -- (tests) the window's settings (the gear) opened or closed; "Docked" on or off; Clear queue as the button does
+  settings = function(player_index)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.toggle_settings(player_gui) end
+  end,
+  docked = function(player_index, on)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.on_docked(player_gui, { element = { state = on } }) end
+  end,
+  press_clear = function(player_index)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.clear_queue(player_gui) end
+  end,
   --- @return {name: string, level: uint, auto: boolean}[]
   queue = function(force_name)
     local force_table = force_table_of(force_name)

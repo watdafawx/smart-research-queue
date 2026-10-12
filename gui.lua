@@ -1,3 +1,4 @@
+local tinsert, tremove = table.insert, table.remove  -- (Lua's: `table` is flib's below)
 local drag = require("drag")
 local dictionary = require("__flib__.dictionary")
 local format = require("__flib__.format")
@@ -16,7 +17,13 @@ local theme
 if script.active_mods["fse-std"] then
   local ok, t = pcall(require, "__fse-std__/theme")
   theme = ok and t.adopt and t or nil
+  if theme then pcall(require, "__fse-std__/window") end  -- (theme.confirm opens its question with it)
 end
+-- The window's layout as our other mods' (fse/README.md, "A window's layout"), with fse-std 0.6.7+: its settings behind
+-- a gear by the close button, Auto Research as a drawer on its right edge ("Docked" in the settings; unticked, a
+-- column inside it as before), clearing the queue and un-researching ask first. The window gets a known size for it.
+local layouts = theme ~= nil and theme.menu ~= nil
+local WIN_W, WIN_H, AUTO_W = 1140, 806, 352  -- (GUI units: the window, and what the Auto Research column adds)
 local util = require("util")
 
 --- @class GuiElems
@@ -69,6 +76,16 @@ end
 
 --- @param self Gui
 function gui.clear_queue(self)
+  if layouts and theme.confirm and self.force_table.queue.head then
+    theme.confirm(self.player, { name = "srq_clear", title = { "gui.urq-clear-queue" },
+      text = "Removes every technology from the queue.", yes = "Clear it", no = "Keep" })
+    return
+  end
+  gui.clear_queue_now(self)
+end
+
+--- @param self Gui
+function gui.clear_queue_now(self)
   local node = self.force_table.queue.head
   while node do
     auto.note_removed(self.force_table, node.technology, node.level)
@@ -86,6 +103,10 @@ function gui.destroy(player_index)
   end
   if self.elems.urq_window.valid then
     self.elems.urq_window.destroy()
+  end
+  local player = game.get_player(player_index)
+  for _, c in pairs(player and player.gui.screen.children or {}) do  -- (its drawer and settings)
+    if c.tags.fstd_attach and c.tags.fstd_attach.owner == "urq_window" and c.get_mod() == script.mod_name then c.destroy() end
   end
   storage.guis[player_index] = nil
 end
@@ -160,6 +181,7 @@ function gui.hide(self)
     self.player.opened = nil
   end
   self.elems.urq_window.visible = false
+  gui.attached_visible(self, false)
 end
 
 --- @param player LuaPlayer
@@ -170,8 +192,25 @@ function gui.new(player)
     return
   end
 
+  local docked = layouts and not (storage.srq_inside and storage.srq_inside[player.index])
   --- @type GuiElems
-  local elems = flib_gui.add(player.gui.screen, gui.base_template)
+  local elems = flib_gui.add(player.gui.screen, docked and gui.docked_template or gui.base_template)
+  if layouts then  -- (a known size: what's stuck to the window, and its settings, are placed by it)
+    local window = elems.urq_window
+    local w = docked and WIN_W or WIN_W + AUTO_W
+    window.style.width, window.style.height = w, WIN_H
+    local tags = window.tags
+    tags.fstd_window, tags.fstd_tweak = "urq_window", { width = w, height = WIN_H }
+    window.tags = tags
+    if docked then  -- (Auto Research: a drawer on the window's right edge)
+      local drawer = theme.attach(window, "right", { size = { AUTO_W, 100 * 7 + 52 }, along = 44, overlap = 8,
+        role = "inset", direction = "vertical", padding = 4, name = "urq_window__auto" })
+      drawer.visible = false
+      for k, v in pairs(flib_gui.add(drawer, gui.auto_column)) do
+        elems[k] = v
+      end
+    end
+  end
 
   -- Build techs list
   local show_controls = player.mod_settings["urq-show-control-hints"].value --[[@as boolean]]
@@ -208,7 +247,7 @@ function gui.new(player)
     },
   }
   storage.guis[player.index] = self
-  gui_util.toggle_frame_action_button(elems.auto_toggle_button, "flib_settings_white", true)
+  gui_util.toggle_frame_action_button(elems.auto_toggle_button, gui.auto_sprite, true)
 
   gui.update(self)
 
@@ -284,6 +323,11 @@ function gui.on_window_closed(self)
   if self.state.pinned then
     return
   end
+  for _, c in pairs(self.player.gui.screen.children) do  -- (a question of ours took its place: it stays open)
+    if c.tags.fstd_confirm_window and c.get_mod() == script.mod_name then
+      return
+    end
+  end
   if self.state.search_open then
     gui.toggle_search(self)
     self.player.opened = self.elems.urq_window
@@ -354,6 +398,7 @@ function gui.show(self, select_tech)
   end
   self.elems.urq_window.visible = true
   self.elems.urq_window.bring_to_front()
+  gui.attached_visible(self, true)
   if not self.state.pinned then
     self.player.opened = self.elems.urq_window
   end
@@ -439,7 +484,28 @@ function gui.unresearch(self)
   if not selected then
     return
   end
+  if layouts and theme.confirm then
+    theme.confirm(self.player, { name = "srq_unresearch", title = { "gui-technology-preview.un-research" },
+      text = { "", "Un-research ", selected.technology.localised_name, " (and what needs it)?" }, yes = "Un-research",
+      no = "Keep", data = { tech = selected.technology.name } })
+    return
+  end
   research_queue.unresearch(self.force_table.queue, selected.technology)
+end
+
+-- (the answers: on every peer, registered as the file loads)
+if layouts and theme.on_confirm then
+  theme.on_confirm(function(player, name, yes, data)
+    if name ~= "srq_clear" and name ~= "srq_unresearch" then return end
+    local self = storage.guis and storage.guis[player.index]
+    if not (self and self.elems.urq_window.valid) then return end
+    if yes and name == "srq_clear" then gui.clear_queue_now(self) end
+    if yes and name == "srq_unresearch" and data and self.force.technologies[data.tech] then
+      research_queue.unresearch(self.force_table.queue, self.force.technologies[data.tech])
+    end
+    -- (the question took the window's place as the opened GUI: it's back, so Esc closes it again)
+    if self.elems.urq_window.visible and not self.state.pinned then player.opened = self.elems.urq_window end
+  end)
 end
 
 --- @param self Gui
@@ -450,7 +516,14 @@ function gui.update(self)
   gui.update_tech_list(self)
   gui.filter_tech_list(self)
   gui.update_durations_and_progress(self)
-  if theme and self.elems.urq_window and self.elems.urq_window.valid then theme.adopt(self.elems.urq_window) end
+  if theme and self.elems.urq_window and self.elems.urq_window.valid then
+    theme.adopt(self.elems.urq_window)
+    for _, c in pairs(self.player.gui.screen.children) do  -- (the drawer, the settings)
+      if c.tags.fstd_attach and c.tags.fstd_attach.owner == "urq_window" and c.get_mod() == script.mod_name then
+        theme.adopt(c)
+      end
+    end
+  end
 end
 
 --- the theme's event handlers (nil without fse-std's themes): control.lua chains them on
@@ -870,8 +943,12 @@ end
 --- @param self Gui
 function gui.toggle_auto_panel(self)
   self.state.auto_visible = not self.state.auto_visible
-  gui_util.toggle_frame_action_button(self.elems.auto_toggle_button, "flib_settings_white", self.state.auto_visible)
+  gui_util.toggle_frame_action_button(self.elems.auto_toggle_button, gui.auto_sprite, self.state.auto_visible)
   self.elems.auto_frame.visible = self.state.auto_visible
+  local drawer = self.elems.auto_frame.parent
+  if drawer.tags.fstd_attach then
+    drawer.visible = self.state.auto_visible and self.elems.urq_window.visible
+  end
   if self.state.auto_visible then
     gui.update_auto(self)
   end
@@ -1119,6 +1196,107 @@ function gui.update_auto(self)
   auto_rows(self, elems.auto_blacklist_flow, config.blacklist, false)
 end
 
+--- the frames stuck to the window shown with it, hidden with it (the drawer only while Auto Research is on)
+--- @param self Gui
+--- @param on boolean
+function gui.attached_visible(self, on)
+  for _, c in pairs(self.player.gui.screen.children) do
+    if c.tags.fstd_attach and c.tags.fstd_attach.owner == "urq_window" and c.get_mod() == script.mod_name then
+      if c.tags.fstd_menu then
+        if not on then c.destroy() end
+      else
+        c.visible = on and (c.name ~= "urq_window__auto" or self.state.auto_visible)
+      end
+    end
+  end
+end
+
+--- the window's settings, behind the gear by its close button (opened, or closed when they were open)
+--- @param self Gui
+function gui.toggle_settings(self)
+  local m = theme.menu(self.elems.urq_window, { size = { 300, 190 }, keep_opened = true })
+  if not m then
+    return
+  end
+  local p = self.player
+  flib_gui.add(m, {
+    { type = "label", caption = { "gui-technology-queue.title" }, style = "caption_label" },
+    {
+      type = "checkbox",
+      caption = "Docked",
+      state = not (storage.srq_inside and storage.srq_inside[p.index]),
+      tooltip = "Auto Research as a drawer on the window's right edge; unticked, a column inside it",
+      handler = { [defines.events.on_gui_checked_state_changed] = gui.on_docked },
+    },
+    {
+      type = "checkbox",
+      caption = { "mod-setting-name.urq-show-disabled-techs" },
+      state = p.mod_settings["urq-show-disabled-techs"].value == true,
+      tags = { setting = "urq-show-disabled-techs" },
+      handler = { [defines.events.on_gui_checked_state_changed] = gui.on_setting },
+    },
+    {
+      type = "checkbox",
+      caption = { "mod-setting-name.urq-show-control-hints" },
+      state = p.mod_settings["urq-show-control-hints"].value == true,
+      tags = { setting = "urq-show-control-hints" },
+      handler = { [defines.events.on_gui_checked_state_changed] = gui.on_setting },
+    },
+    {
+      type = "flow",
+      style_mods = { horizontal_spacing = 4, top_margin = 4 },
+      {
+        type = "button",
+        caption = "Theme...",
+        tooltip = "How every window using fse-std looks to you (/fse-theme)",
+        style_mods = { minimal_width = 0, horizontally_stretchable = true },
+        handler = { [defines.events.on_gui_click] = gui.on_theme },
+      },
+      {
+        type = "button",
+        caption = "Centre it",
+        tooltip = "The window back in the middle of the screen",
+        style_mods = { minimal_width = 0, horizontally_stretchable = true },
+        handler = { [defines.events.on_gui_click] = gui.on_center },
+      },
+    },
+  })
+  theme.adopt(m)
+end
+
+--- @param self Gui
+--- @param e EventData.on_gui_checked_state_changed
+function gui.on_docked(self, e)
+  storage.srq_inside = storage.srq_inside or {}
+  storage.srq_inside[self.player.index] = (not e.element.state) or nil
+  local selected = self.state.selected
+  local player = self.player
+  local new = gui.new(player)
+  if new then
+    gui.show(new, selected and selected.technology.name or nil)
+  end
+end
+
+--- @param self Gui
+--- @param e EventData.on_gui_checked_state_changed
+function gui.on_setting(self, e)
+  self.player.mod_settings[e.element.tags.setting] = { value = e.element.state }
+end
+
+--- @param self Gui
+function gui.on_theme(self)
+  local m = self.player.gui.screen["urq_window__menu"]
+  if m then
+    m.destroy()
+  end
+  remote.call("fse-std", "open_theme", self.player.index)
+end
+
+--- @param self Gui
+function gui.on_center(self)
+  self.elems.urq_window.force_auto_center()
+end
+
 --- @param caption LocalisedString
 local function auto_heading(caption)
   return {
@@ -1143,6 +1321,76 @@ local function auto_checkbox(name, key, caption)
     handler = { [defines.events.on_gui_checked_state_changed] = gui.on_auto_checkbox },
   }
 end
+
+-- Auto Research's panel: a column in the window, or the drawer on its right edge (docked)
+gui.auto_column = {
+    type = "frame",
+    name = "auto_frame",
+    style = "inside_shallow_frame",
+    direction = "vertical",
+    style_mods = { width = 340, height = 100 * 7 + 36 },
+    {
+      type = "frame",
+      style = "subheader_frame",
+      style_mods = { horizontally_stretchable = true },
+      { type = "label", style = "subheader_caption_label", caption = { "gui.srq-auto-research" } },
+      { type = "empty-widget", style = "flib_horizontal_pusher" },
+      auto_checkbox("auto_enabled_checkbox", "enabled", "srq-enabled"),
+    },
+    {
+      type = "scroll-pane",
+      style = "flib_naked_scroll_pane",
+      style_mods = { horizontally_stretchable = true, vertically_stretchable = true },
+      vertical_scroll_policy = "auto",
+      horizontal_scroll_policy = "never",
+      {
+        type = "flow",
+        direction = "vertical",
+        style_mods = { vertical_spacing = 4, horizontally_stretchable = true },
+        { type = "label", name = "auto_next_label", style_mods = { single_line = false, maximal_width = 300 } },
+        auto_checkbox("auto_goals_only_checkbox", "goals_only", "srq-goals-only"),
+        auto_checkbox("auto_allow_switching_checkbox", "allow_switching", "srq-allow-switching"),
+        auto_checkbox("auto_deprioritize_infinite_checkbox", "deprioritize_infinite", "srq-deprioritize-infinite"),
+        auto_checkbox("auto_announce_checkbox", "announce", "srq-announce"),
+        {
+          type = "flow",
+          style_mods = { vertical_align = "center", horizontal_spacing = 8 },
+          { type = "label", caption = { "gui.srq-strategy" }, tooltip = { "gui.srq-strategy-tooltip" } },
+          {
+            type = "drop-down",
+            name = "auto_strategy_dropdown",
+            items = {
+              { "gui.srq-strategy-balanced" },
+              { "gui.srq-strategy-fast" },
+              { "gui.srq-strategy-slow" },
+              { "gui.srq-strategy-cheap" },
+              { "gui.srq-strategy-expensive" },
+              { "gui.srq-strategy-random" },
+            },
+            selected_index = 1,
+            tooltip = { "gui.srq-strategy-tooltip" },
+            handler = { [defines.events.on_gui_selection_state_changed] = gui.on_auto_strategy },
+          },
+        },
+        auto_heading({ "gui.srq-packs" }),
+        {
+          type = "frame",
+          style = "slot_group_frame",
+          { type = "table", name = "auto_packs_table", style = "slot_table", column_count = 7 },
+        },
+        auto_checkbox("auto_producing_only_checkbox", "producing_only", "srq-producing-only"),
+        auto_checkbox("auto_pack_filter_checkbox", "pack_filter", "srq-pack-filter"),
+        auto_heading({ "gui.srq-goals" }),
+        { type = "label", caption = { "gui.srq-goals-hint" }, style_mods = { single_line = false, maximal_width = 300 } },
+        { type = "flow", name = "auto_goals_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
+        auto_heading({ "gui.srq-blacklist" }),
+        { type = "flow", name = "auto_blacklist_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
+      },
+    },
+  }
+
+-- the Auto Research toggle's icon (the gear by the close button is the window's settings)
+gui.auto_sprite = layouts and "utility/reset_white" or "flib_settings_white"
 
 gui.base_template = {
   {
@@ -1181,7 +1429,7 @@ gui.base_template = {
       ),
       gui_util.frame_action_button(
         "auto_toggle_button",
-        "flib_settings_white",
+        gui.auto_sprite,
         { "gui.srq-toggle-auto" },
         gui.toggle_auto_panel
       ),
@@ -1420,74 +1668,31 @@ gui.base_template = {
           { type = "table", name = "techs_table", style = "slot_table", column_count = 8 },
         },
       },
-      {
-        type = "frame",
-        name = "auto_frame",
-        style = "inside_shallow_frame",
-        direction = "vertical",
-        style_mods = { width = 340, height = 100 * 7 + 36 },
-        {
-          type = "frame",
-          style = "subheader_frame",
-          style_mods = { horizontally_stretchable = true },
-          { type = "label", style = "subheader_caption_label", caption = { "gui.srq-auto-research" } },
-          { type = "empty-widget", style = "flib_horizontal_pusher" },
-          auto_checkbox("auto_enabled_checkbox", "enabled", "srq-enabled"),
-        },
-        {
-          type = "scroll-pane",
-          style = "flib_naked_scroll_pane",
-          style_mods = { horizontally_stretchable = true, vertically_stretchable = true },
-          vertical_scroll_policy = "auto",
-          horizontal_scroll_policy = "never",
-          {
-            type = "flow",
-            direction = "vertical",
-            style_mods = { vertical_spacing = 4, horizontally_stretchable = true },
-            { type = "label", name = "auto_next_label", style_mods = { single_line = false, maximal_width = 300 } },
-            auto_checkbox("auto_goals_only_checkbox", "goals_only", "srq-goals-only"),
-            auto_checkbox("auto_allow_switching_checkbox", "allow_switching", "srq-allow-switching"),
-            auto_checkbox("auto_deprioritize_infinite_checkbox", "deprioritize_infinite", "srq-deprioritize-infinite"),
-            auto_checkbox("auto_announce_checkbox", "announce", "srq-announce"),
-            {
-              type = "flow",
-              style_mods = { vertical_align = "center", horizontal_spacing = 8 },
-              { type = "label", caption = { "gui.srq-strategy" }, tooltip = { "gui.srq-strategy-tooltip" } },
-              {
-                type = "drop-down",
-                name = "auto_strategy_dropdown",
-                items = {
-                  { "gui.srq-strategy-balanced" },
-                  { "gui.srq-strategy-fast" },
-                  { "gui.srq-strategy-slow" },
-                  { "gui.srq-strategy-cheap" },
-                  { "gui.srq-strategy-expensive" },
-                  { "gui.srq-strategy-random" },
-                },
-                selected_index = 1,
-                tooltip = { "gui.srq-strategy-tooltip" },
-                handler = { [defines.events.on_gui_selection_state_changed] = gui.on_auto_strategy },
-              },
-            },
-            auto_heading({ "gui.srq-packs" }),
-            {
-              type = "frame",
-              style = "slot_group_frame",
-              { type = "table", name = "auto_packs_table", style = "slot_table", column_count = 7 },
-            },
-            auto_checkbox("auto_producing_only_checkbox", "producing_only", "srq-producing-only"),
-            auto_checkbox("auto_pack_filter_checkbox", "pack_filter", "srq-pack-filter"),
-            auto_heading({ "gui.srq-goals" }),
-            { type = "label", caption = { "gui.srq-goals-hint" }, style_mods = { single_line = false, maximal_width = 300 } },
-            { type = "flow", name = "auto_goals_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
-            auto_heading({ "gui.srq-blacklist" }),
-            { type = "flow", name = "auto_blacklist_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
-          },
-        },
-      },
+      gui.auto_column,
     },
   },
 }
+
+-- (with fse-std's layouts: the window's settings, a gear left of the close button)
+if layouts then
+  local titlebar = gui.base_template[1][1]
+  tinsert(titlebar, #titlebar, {
+    type = "sprite-button",
+    name = "settings_button",
+    style = "frame_action_button",
+    sprite = "fstd-settings",
+    tooltip = "Settings",
+    tags = { fstd_settings = "urq_window" },
+    handler = { [defines.events.on_gui_click] = gui.toggle_settings },
+  })
+end
+
+-- (docked: the same window without the Auto Research column)
+gui.docked_template = table.deep_copy(gui.base_template)
+do
+  local body = gui.docked_template[1][2]
+  tremove(body, #body)
+end
 
 flib_gui.add_handlers(gui, function(e, handler)
   local gui = gui.get(e.player_index)

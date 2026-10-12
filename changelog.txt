@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.0
+Date: 2026-10-11
+  Changes:
+    - With fse-std 0.6.7+, the window's layout as our other mods': its settings behind a gear by the close button
+      (Docked, show disabled technologies, show control hints, Theme..., Centre it); Auto Research as a drawer on
+      the window's right edge (untick Docked for the column inside it, as before); its toggle has an icon of its own.
+    - Clearing the queue and un-researching a technology ask first (with fse-std).
+    - remote.call("srq", "settings" / "docked" / "press_clear", ...) for tests.
+---------------------------------------------------------------------------------------------------
 Version: 1.1.7
 Date: 2026-10-11
   Changes:

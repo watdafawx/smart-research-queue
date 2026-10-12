@@ -21,6 +21,8 @@ Works with big modpacks: technology data is cached once per load.
 
 The research queue window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before.
 
+With FSE std 0.6.7+ the window is laid out as our other mods' windows: the gear by the close button holds its settings (Docked, show disabled technologies, show control hints, Theme..., Centre it), and Auto Research hangs as a drawer on its right edge (untick Docked to have it as a column inside the window). Clearing the queue and un-researching ask first.
+
 ![The research queue window in Vulcanus and Aquilo](images/themes.jpg)
 
 ## Install

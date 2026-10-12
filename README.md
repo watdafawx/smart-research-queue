@@ -17,18 +17,6 @@ queue with [Auto Research](https://mods.factorio.com/mod/auto-research) built in
 Replaces Ultimate Research Queue and Auto Research (marked incompatible, so the game won't load them together).
 Works with big modpacks: technology data is cached once per load.
 
-## Remote planner
-
-With the [FSE](https://github.com/watdafawx/fse) loader and its `fse-bridge` mod, auto research can be picked by a
-program outside the game: `python remote/planner.py` (add `--watch` to restart it whenever you save it). While it
-runs, auto research asks it instead of the strategy, and falls back to the strategy if it doesn't answer within 2 s.
-Its own strategy: the cheapest step toward your first goal, else the technology that unlocks the most per science
-spent; infinite technologies last. Edit `choose()` in it to plan your own way: the game keeps running.
-
-Write one in any language: it long-polls fse's web API for the event `srq/need_pick` (`{force}`), reads
-`remote.call("srq", "candidates", force)` and answers `remote.call("srq", "pick_remote", force, name)` (see FSE's
-README, "Remote mods"). `test/run_remote.py` checks it end to end.
-
 ## Themes
 
 The research queue window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before.

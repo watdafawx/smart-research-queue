@@ -81,6 +81,15 @@ script.on_event(defines.events.on_player_changed_surface, function(e)
   gui.get(e.player_index)
 end)
 
+-- The window back in the middle when the screen's size or the GUI scale changes (what's stuck to it with it)
+script.on_event({
+  defines.events.on_player_display_resolution_changed,
+  defines.events.on_player_display_scale_changed,
+}, function(e)
+  local self = storage.guis and storage.guis[e.player_index]
+  if self and self.elems.urq_window.valid then gui.center(self) end
+end)
+
 -- Gui
 
 gui.handle_events()
@@ -428,6 +437,11 @@ remote.add_interface("srq", {
     local player_gui = gui.get(player_index)
     if player_gui then gui.on_docked(player_gui, { element = { state = on } }) end
   end,
+  -- (tests) the settings' "Centre the window"
+  center = function(player_index)
+    local player_gui = gui.get(player_index)
+    if player_gui then gui.center(player_gui) end
+  end,
   press_clear = function(player_index)
     local player_gui = gui.get(player_index)
     if player_gui then gui.clear_queue(player_gui) end
@@ -465,6 +479,18 @@ remote.add_interface("srq", {
     if force_table then
       auto.remove(force_table, tech_name)
     end
+  end,
+  -- empties a force's queue (as "Clear it" does)
+  clear = function(force_name)
+    local force_table = force_table_of(force_name)
+    if not force_table then return end
+    local node = force_table.queue.head
+    while node do
+      auto.note_removed(force_table, node.technology, node.level)
+      node = node.next
+    end
+    research_queue.clear(force_table.queue)
+    util.schedule_force_update(force_table.force)
   end,
   --- @return LocalisedString? why it was refused
   push = function(force_name, tech_name, to_front)

@@ -19,12 +19,106 @@ if script.active_mods["fse-std"] then
   theme = ok and t.adopt and t or nil
   if theme then pcall(require, "__fse-std__/window") end  -- (theme.confirm opens its question with it)
 end
+
+-- (elements rebuilt or restyled after the window was themed: themed too, only that part of the window)
+local function adopt(elem)
+  if theme and elem and elem.valid then theme.adopt(elem) end
+end
 -- The window's layout as our other mods' (fse/README.md, "A window's layout"), with fse-std 0.6.7+: its settings behind
 -- a gear by the close button, Auto Research as a drawer on its right edge ("Docked" in the settings; unticked, a
 -- column inside it as before), clearing the queue and un-researching ask first. The window gets a known size for it.
 local layouts = theme ~= nil and theme.menu ~= nil
 local WIN_W, WIN_H, AUTO_W = 1140, 806, 352  -- (GUI units: the window, and what the Auto Research column adds)
 local util = require("util")
+
+-- SRQ's dark tool button icons, white where the theme's buttons have light text (its dark buttons: data.lua makes
+-- the white copies)
+--- @param player LuaPlayer
+--- @param sprite string utility/<name> or urq_open_in_graph
+--- @return string
+local function icon(player, sprite)
+  local themes = theme and theme.themes
+  if not (themes and themes.color and themes.is_light) then return sprite end
+  local th = theme.of(player)
+  local t = themes.by_name[th.carrier]
+  local ink = t and themes.color(t, th.edits, "btn_ink")
+  if not (ink and themes.is_light(ink)) then return sprite end
+  local white = "srq-white-" .. sprite:gsub("^utility/", "")
+  return helpers.is_valid_sprite_path(white) and white or sprite  -- (data.lua may have skipped that one)
+end
+
+-- the window in the middle of the screen. With fse-std's layouts we centre it ourselves, from the screen's size:
+-- the game's auto_center / force_auto_center move it without on_gui_location_changed, so its drawer and settings
+-- (placed by theme.follow from the window's location) would stay behind, over the window. Docked, the drawer
+-- sticking out of its right edge counts too.
+--- @param window LuaGuiElement
+--- @param docked boolean?
+local function center_window(window, docked)
+  if not (window and window.valid) then return end
+  if not layouts then
+    window.force_auto_center()
+    return
+  end
+  local player = game.get_player(window.player_index) --[[@as LuaPlayer]]
+  local sc, res = player.display_scale, player.display_resolution
+  local w = docked and (WIN_W + AUTO_W - 8) or (WIN_W + AUTO_W)
+  window.location = { math.max(0, math.floor((res.width - w * sc) / 2)), math.max(0, math.floor((res.height - WIN_H * sc) / 2)) }
+  theme.follow(window)
+end
+
+-- the window's size back in its tweak after theme.adopt: adopt keeps what we set as minimal/maximal sizes, but
+-- theme.follow places the drawer and the settings from the tweak's width and height (else it takes 400 x 300, and
+-- they land over the window)
+--- @param window LuaGuiElement
+local function keep_size(window)
+  local tags = window.tags
+  local size = tags.srq_size
+  if not size then return end
+  local tw = tags.fstd_tweak or {}
+  if tw.width ~= size[1] or tw.height ~= size[2] then
+    tw.width, tw.height = size[1], size[2]
+    tags.fstd_tweak = tw
+    window.tags = tags
+    theme.follow(window)
+  end
+end
+
+-- Where the window's panels start and where the tech list's slots start, below the window's top (GUI units). The
+-- game's look (fse-std's "vanilla" shape, or no fse-std) has a slimmer subheader than fse-std's own shapes; Lua can't
+-- read sizes, so these are measured from screenshots (fse/test/run_theme_matrix.py).
+--- @param player LuaPlayer
+--- @return boolean
+local function game_look(player)
+  local themes = theme and theme.themes
+  if not (themes and themes.by_name and theme.of) then return true end
+  local t = themes.by_name[theme.of(player).carrier]
+  return not t or t.shape == "vanilla"
+end
+local TITLE_H = { game = 42, own = 41 }  -- (the window's top to its panels' outer edge)
+local SLOTS_TOP = { game = 81, own = 89 }  -- (the window's top to the tech list's first row of slots)
+
+-- the docked Auto Research drawer: from the panels' top to their bottom (the window's padding above its bottom edge),
+-- so it reads as one more panel of the window. Again after a theme change: its title bar's height differs.
+--- @param window LuaGuiElement
+--- @param drawer LuaGuiElement
+local function fit_drawer(window, drawer)
+  if not (drawer and drawer.valid and drawer.tags.fstd_attach) then return end
+  local look = game_look(game.get_player(window.player_index) --[[@as LuaPlayer]]) and "game" or "own"
+  local along = TITLE_H[look]
+  local h = WIN_H - 12 - along
+  local tags = drawer.tags
+  local a = tags.fstd_attach
+  if a.along ~= along or a.h ~= h then
+    a.along, a.h = along, h
+    tags.fstd_attach = a
+    drawer.tags = tags
+    theme.apply(drawer, "inset", { width = AUTO_W, height = h, padding = 4 })
+    for _, c in pairs(drawer.children) do  -- (the Auto Research frame inside: the drawer's height less its padding)
+      if c.name == "auto_frame" then c.style.height = h - 16 end
+    end
+    theme.follow(window)
+  end
+end
 
 --- @class GuiElems
 --- @field urq_window LuaGuiElement
@@ -78,7 +172,7 @@ end
 function gui.clear_queue(self)
   if layouts and theme.confirm and self.force_table.queue.head then
     theme.confirm(self.player, { name = "srq_clear", title = { "gui.urq-clear-queue" },
-      text = "Removes every technology from the queue.", yes = "Clear it", no = "Keep" })
+      text = { "gui.srq-clear-queue-text" }, yes = { "gui.srq-clear-it" }, no = { "gui.srq-keep" } })
     return
   end
   gui.clear_queue_now(self)
@@ -200,16 +294,29 @@ function gui.new(player)
     local w = docked and WIN_W or WIN_W + AUTO_W
     window.style.width, window.style.height = w, WIN_H
     local tags = window.tags
-    tags.fstd_window, tags.fstd_tweak = "urq_window", { width = w, height = WIN_H }
+    tags.fstd_window, tags.fstd_tweak, tags.srq_size = "urq_window", { width = w, height = WIN_H }, { w, WIN_H }
     window.tags = tags
+    window.auto_center = false  -- (centred by us, before the drawer is placed from its location)
+    center_window(window, docked)
     if docked then  -- (Auto Research: a drawer on the window's right edge)
-      local drawer = theme.attach(window, "right", { size = { AUTO_W, 100 * 7 + 52 }, along = 44, overlap = 8,
-        role = "inset", direction = "vertical", padding = 4, name = "urq_window__auto" })
+      local drawer = theme.attach(window, "right", { size = { AUTO_W, WIN_H - 12 - TITLE_H.game },
+        along = TITLE_H.game, overlap = 8, role = "inset", direction = "vertical", padding = 4, name = "urq_window__auto" })
       drawer.visible = false
       for k, v in pairs(flib_gui.add(drawer, gui.auto_column)) do
         elems[k] = v
       end
+      -- (the drawer is the panel: no second one inside it)
+      local auto = elems.auto_frame
+      auto.style = "invisible_frame"
+      auto.style.width, auto.style.height = 340, WIN_H - 12 - TITLE_H.game - 16
+      fit_drawer(window, drawer)
     end
+  end
+  if theme then  -- (SRQ's own styles, which adopt doesn't know: the lists' black slot grid, the search field)
+    theme.apply(elems.queue_scroll_pane, "scroll", { padding = 0, height = 100 * 2, horizontally_stretchable = true })
+    theme.apply(elems.techs_scroll_pane, "scroll",
+      { padding = 0, height = 100 * 7, width = 72 * 8 + 12, horizontally_stretchable = true })
+    theme.apply(elems.search_textfield, "field", { top_margin = -3, right_padding = 3 })
   end
 
   -- Build techs list
@@ -241,6 +348,7 @@ function gui.new(player)
       search_open = false,
       search_query = "",
       auto_visible = true,
+      queue_rows = nil,  -- (the queue list's height in rows: 1 while it's empty, else 2)
       pack_filter = false,
       --- @type TechnologyAndLevel?
       selected = nil,
@@ -314,7 +422,7 @@ end
 --- @param e EventData.on_gui_click
 function gui.on_titlebar_click(self, e)
   if e.button == defines.mouse_button_type.middle then
-    self.elems.urq_window.force_auto_center()
+    gui.center(self)
   end
 end
 
@@ -435,7 +543,7 @@ function gui.toggle_pinned(self)
     self.elems.close_button.tooltip = { "gui.close" }
   else
     self.player.opened = self.elems.urq_window
-    self.elems.urq_window.force_auto_center()
+    gui.center(self)
     self.elems.search_button.tooltip = { "gui.urq-search-instruction" }
     self.elems.close_button.tooltip = { "gui.close-instruction" }
   end
@@ -486,8 +594,8 @@ function gui.unresearch(self)
   end
   if layouts and theme.confirm then
     theme.confirm(self.player, { name = "srq_unresearch", title = { "gui-technology-preview.un-research" },
-      text = { "", "Un-research ", selected.technology.localised_name, " (and what needs it)?" }, yes = "Un-research",
-      no = "Keep", data = { tech = selected.technology.name } })
+      text = { "gui.srq-unresearch-text", selected.technology.localised_name },
+      yes = { "gui-technology-preview.un-research" }, no = { "gui.srq-keep" }, data = { tech = selected.technology.name } })
     return
   end
   research_queue.unresearch(self.force_table.queue, selected.technology)
@@ -518,6 +626,7 @@ function gui.update(self)
   gui.update_durations_and_progress(self)
   if theme and self.elems.urq_window and self.elems.urq_window.valid then
     theme.adopt(self.elems.urq_window)
+    keep_size(self.elems.urq_window)
     for _, c in pairs(self.player.gui.screen.children) do  -- (the drawer, the settings)
       if c.tags.fstd_attach and c.tags.fstd_attach.owner == "urq_window" and c.get_mod() == script.mod_name then
         theme.adopt(c)
@@ -526,8 +635,23 @@ function gui.update(self)
   end
 end
 
---- the theme's event handlers (nil without fse-std's themes): control.lua chains them on
-gui.theme_handlers = theme and theme.handlers
+--- the theme's event handlers (nil without fse-std's themes): control.lua chains them on. A theme change also
+--- swaps the tool buttons' icons (white on dark themes)
+gui.theme_handlers = nil
+if theme then
+  gui.theme_handlers = {}
+  for k, v in pairs(theme.handlers) do gui.theme_handlers[k] = v end
+  local restyle = theme.handlers["fstd-theme-changed"]
+  gui.theme_handlers["fstd-theme-changed"] = function(e)
+    if restyle then restyle(e) end
+    local self = storage.guis and storage.guis[e.player_index]
+    if self and self.elems.urq_window.valid then
+      if self.elems.auto_frame.valid then fit_drawer(self.elems.urq_window, self.elems.auto_frame.parent) end
+      gui.update_icons(self)
+      if self.elems.auto_frame.valid and self.elems.auto_frame.visible then gui.update_auto(self) end
+    end
+  end
+end
 
 --- @param self Gui
 function gui.update_durations_and_progress(self)
@@ -587,7 +711,10 @@ function gui.update_queue(self)
 
   local requeue_multilevel = queue.requeue_multilevel
   local requeue_multilevel_button = self.elems.queue_requeue_multilevel_button
-  if requeue_multilevel then
+  -- (themed: the theme's tool button, lit while on; the game's own has no lit look, flib's selected style is one)
+  if theme then
+    requeue_multilevel_button.toggled = requeue_multilevel == true
+  elseif requeue_multilevel then
     requeue_multilevel_button.style = "flib_selected_tool_button"
   else
     requeue_multilevel_button.style = "tool_button"
@@ -595,15 +722,34 @@ function gui.update_queue(self)
 
   local paused = queue.paused
   local pause_button = self.elems.queue_pause_button
-  if paused then
-    pause_button.style = "flib_selected_tool_button"
-    pause_button.tooltip = { "gui.urq-resume-queue" }
+  if theme then
+    pause_button.toggled = paused == true
   else
-    pause_button.style = "tool_button"
-    pause_button.tooltip = { "gui.urq-pause-queue" }
+    pause_button.style = paused and "flib_selected_tool_button" or "tool_button"
   end
+  pause_button.tooltip = paused and { "gui.urq-resume-queue" } or { "gui.urq-pause-queue" }
+  gui.update_icons(self)
+  adopt(requeue_multilevel_button)
+  adopt(pause_button)
 
   self.elems.queue_trash_button.enabled = queue.len > 0
+
+  -- (empty: one row of the list, with a hint; the technology's details below get the other)
+  local empty = queue.len == 0
+  self.elems.queue_empty_label.visible = empty
+  self.elems.queue_table.visible = not empty  -- (an empty table still takes a line: a scroll bar on the one row)
+  local rows = empty and 1 or 2
+  if self.state.queue_rows ~= rows then
+    self.state.queue_rows = rows
+    local pane = self.elems.queue_scroll_pane
+    -- (empty: no scroll bar, nor the space kept for one; the hint has the row to itself)
+    pane.vertical_scroll_policy = empty and "never" or "auto-and-reserve-space"
+    if theme then  -- (in its tweak too: a theme change restyles it from that)
+      theme.apply(pane, "scroll", { padding = 0, height = 100 * rows, horizontally_stretchable = true })
+    else
+      pane.style.height = 100 * rows
+    end
+  end
 
   local held = self.state.held and queue.lookup[self.state.held]
   if self.state.held and not held then
@@ -661,6 +807,15 @@ function gui.update_queue(self)
   for _, button in pairs(queue_table.children) do
     drag.mark(button, button.name)
   end
+end
+
+--- the tool buttons' icons for the player's theme (white ones on a dark theme)
+--- @param self Gui
+function gui.update_icons(self)
+  local elems, player = self.elems, self.player
+  elems.queue_requeue_multilevel_button.sprite = icon(player, "utility/variations_tool_icon")
+  elems.queue_pause_button.sprite = icon(player, "utility/pause")
+  elems.tech_info_graph_button.sprite = icon(player, "urq_open_in_graph")
 end
 
 --- @param self Gui
@@ -843,6 +998,7 @@ function gui.update_tech_info(self)
 
   -- Footer
   gui.update_tech_info_footer(self)
+  adopt(self.elems.tech_info_scroll_pane.parent)
 end
 
 --- @param self Gui
@@ -940,10 +1096,21 @@ function gui.update_tech_list(self)
   end
 end
 
+-- the title bar's Auto Research button: lit while its panel is shown; its tooltip says so, and whether auto research
+-- is on (the button shows the panel, it doesn't switch auto research)
+--- @param self Gui
+local function auto_toggle_tooltip(self)
+  local button = self.elems.auto_toggle_button
+  if not (button and button.valid) then return end
+  local on = self.force_table.auto.enabled and { "gui.srq-auto-on" } or { "gui.srq-auto-off" }
+  button.tooltip = { self.state.auto_visible and "gui.srq-toggle-auto-shown" or "gui.srq-toggle-auto-hidden", on }
+end
+
 --- @param self Gui
 function gui.toggle_auto_panel(self)
   self.state.auto_visible = not self.state.auto_visible
   gui_util.toggle_frame_action_button(self.elems.auto_toggle_button, gui.auto_sprite, self.state.auto_visible)
+  auto_toggle_tooltip(self)
   self.elems.auto_frame.visible = self.state.auto_visible
   local drawer = self.elems.auto_frame.parent
   if drawer.tags.fstd_attach then
@@ -1067,17 +1234,45 @@ local function auto_rows(self, parent, names, is_goals)
   parent.clear()
   local technologies = self.force.technologies
   if #names == 0 then
-    parent.add({
+    local label = parent.add({
       type = "label",
       caption = { is_goals and "gui.srq-no-goals" or "gui.srq-no-blacklist" },
-    }).style.font_color = { 0.6, 0.6, 0.6 }
+    })
+    if theme then
+      theme.apply(label, "dim")
+    else
+      label.style.font_color = { 0.6, 0.6, 0.6 }
+    end
     return
+  end
+  -- (a table: the names in one column of a fixed width, so the buttons line up in columns at the right edge; the
+  -- first goal has no "up", the last no "down": an empty cell of a tool button's size keeps its place)
+  local player = self.player
+  local columns = is_goals and 5 or 3
+  local tbl = parent.add({ type = "table", column_count = columns })
+  tbl.style.horizontal_spacing, tbl.style.vertical_spacing = 4, 2
+  for c = 1, columns do
+    tbl.style.column_alignments[c] = c == 2 and "middle-left" or "middle-center"
+  end
+  local NAME_W = AUTO_W - 52 - (columns - 1) * 32  -- (the column's width less its padding, the slot and the buttons)
+  local function cell(on, sprite, style, tooltip, handler, name)
+    if not on then
+      tbl.add({ type = "empty-widget" }).style.size = 28
+      return
+    end
+    flib_gui.add(tbl, {
+      type = "sprite-button",
+      style = style,
+      sprite = sprite,
+      tooltip = tooltip,
+      tags = { tech_name = name },
+      handler = { [defines.events.on_gui_click] = handler },
+    })
   end
   for i, name in pairs(names) do
     local technology = technologies[name]
     if technology then
-      local row = { type = "flow", style_mods = { vertical_align = "center", horizontal_spacing = 4 } }
-      row[#row + 1] = {
+      flib_gui.add(tbl, {
         type = "sprite-button",
         style = "transparent_slot",
         style_mods = { size = 28 },
@@ -1085,41 +1280,15 @@ local function auto_rows(self, parent, names, is_goals)
         elem_tooltip = { type = "technology", name = name },
         tags = { tech_name = name },
         handler = { [defines.events.on_gui_click] = gui.on_auto_row_select },
-      }
-      row[#row + 1] = {
-        type = "label",
-        caption = technology.localised_name,
-        style_mods = { horizontally_stretchable = true, horizontally_squashable = true, maximal_width = 200 },
-      }
+      })
+      local label = tbl.add({ type = "label", caption = technology.localised_name, tooltip = technology.localised_name })
+      label.style.width = NAME_W
       if is_goals then
-        row[#row + 1] = {
-          type = "sprite-button",
-          style = "mini_button",
-          sprite = "utility/hint_arrow_up",
-          tooltip = { "gui.srq-move-up" },
-          enabled = i > 1,
-          tags = { tech_name = name },
-          handler = { [defines.events.on_gui_click] = gui.on_auto_goal_up },
-        }
-        row[#row + 1] = {
-          type = "sprite-button",
-          style = "mini_button",
-          sprite = "utility/hint_arrow_down",
-          tooltip = { "gui.srq-move-down" },
-          enabled = i < #names,
-          tags = { tech_name = name },
-          handler = { [defines.events.on_gui_click] = gui.on_auto_goal_down },
-        }
+        cell(i > 1, icon(player, "utility/hint_arrow_up"), "tool_button", { "gui.srq-move-up" }, gui.on_auto_goal_up, name)
+        cell(i < #names, icon(player, "utility/hint_arrow_down"), "tool_button", { "gui.srq-move-down" },
+          gui.on_auto_goal_down, name)
       end
-      row[#row + 1] = {
-        type = "sprite-button",
-        style = "mini_tool_button_red",
-        sprite = "utility/close",
-        tooltip = { "gui.srq-remove" },
-        tags = { tech_name = name },
-        handler = { [defines.events.on_gui_click] = gui.on_auto_row_remove },
-      }
-      flib_gui.add(parent, row)
+      cell(true, "utility/close", "tool_button_red", { "gui.srq-remove" }, gui.on_auto_row_remove, name)
     end
   end
 end
@@ -1127,6 +1296,7 @@ end
 --- @param self Gui
 function gui.update_auto(self)
   local elems = self.elems
+  auto_toggle_tooltip(self)
   if not elems.auto_frame.visible then
     return
   end
@@ -1194,6 +1364,7 @@ function gui.update_auto(self)
 
   auto_rows(self, elems.auto_goals_flow, config.goals, true)
   auto_rows(self, elems.auto_blacklist_flow, config.blacklist, false)
+  adopt(elems.auto_frame)
 end
 
 --- the frames stuck to the window shown with it, hidden with it (the drawer only while Auto Research is on)
@@ -1214,18 +1385,22 @@ end
 --- the window's settings, behind the gear by its close button (opened, or closed when they were open)
 --- @param self Gui
 function gui.toggle_settings(self)
-  local m = theme.menu(self.elems.urq_window, { size = { 300, 190 }, keep_opened = true })
+  -- (over the tech list: its bottom edge on the seam under the list's second row of slots, not across a slot; it
+  -- starts at the panels' top)
+  local look = game_look(self.player) and "game" or "own"
+  local m = theme.menu(self.elems.urq_window, { size = { 300, SLOTS_TOP[look] + 200 - TITLE_H[look] }, below = TITLE_H[look],
+    keep_opened = true })
   if not m then
     return
   end
   local p = self.player
   flib_gui.add(m, {
-    { type = "label", caption = { "gui-technology-queue.title" }, style = "caption_label" },
+    { type = "label", caption = { "mod-name.smart-research-queue" }, style = "caption_label" },
     {
       type = "checkbox",
-      caption = "Docked",
+      caption = { "?", { "fstd.docked" }, { "gui.srq-docked" } },
       state = not (storage.srq_inside and storage.srq_inside[p.index]),
-      tooltip = "Auto Research as a drawer on the window's right edge; unticked, a column inside it",
+      tooltip = { "gui.srq-docked-tooltip" },
       handler = { [defines.events.on_gui_checked_state_changed] = gui.on_docked },
     },
     {
@@ -1242,20 +1417,21 @@ function gui.toggle_settings(self)
       tags = { setting = "urq-show-control-hints" },
       handler = { [defines.events.on_gui_checked_state_changed] = gui.on_setting },
     },
+    { type = "empty-widget", style_mods = { vertically_stretchable = true } },  -- (the buttons on its bottom edge)
     {
       type = "flow",
       style_mods = { horizontal_spacing = 4, top_margin = 4 },
       {
         type = "button",
-        caption = "Theme...",
-        tooltip = "How every window using fse-std looks to you (/fse-theme)",
+        caption = { "?", { "fstd.theme-button" }, { "gui.srq-theme" } },
+        tooltip = { "?", { "fstd.theme-button-tooltip" }, { "gui.srq-theme-tooltip" } },
         style_mods = { minimal_width = 0, horizontally_stretchable = true },
         handler = { [defines.events.on_gui_click] = gui.on_theme },
       },
       {
         type = "button",
-        caption = "Centre it",
-        tooltip = "The window back in the middle of the screen",
+        caption = { "?", { "fstd.reset-place" }, { "gui.srq-center" } },
+        tooltip = { "?", { "fstd.reset-place-tooltip" }, { "gui.srq-center-tooltip" } },
         style_mods = { minimal_width = 0, horizontally_stretchable = true },
         handler = { [defines.events.on_gui_click] = gui.on_center },
       },
@@ -1292,9 +1468,16 @@ function gui.on_theme(self)
   remote.call("fse-std", "open_theme", self.player.index)
 end
 
+--- the window back in the middle of the screen (its drawer and settings with it)
+--- @param self Gui
+function gui.center(self)
+  local window = self.elems.urq_window
+  center_window(window, self.elems.auto_frame.valid and self.elems.auto_frame.parent.tags.fstd_attach ~= nil)
+end
+
 --- @param self Gui
 function gui.on_center(self)
-  self.elems.urq_window.force_auto_center()
+  gui.center(self)
 end
 
 --- @param caption LocalisedString
@@ -1382,15 +1565,17 @@ gui.auto_column = {
         auto_checkbox("auto_pack_filter_checkbox", "pack_filter", "srq-pack-filter"),
         auto_heading({ "gui.srq-goals" }),
         { type = "label", caption = { "gui.srq-goals-hint" }, style_mods = { single_line = false, maximal_width = 300 } },
-        { type = "flow", name = "auto_goals_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
+        { type = "flow", name = "auto_goals_flow", direction = "vertical",
+          style_mods = { vertical_spacing = 2, horizontally_stretchable = true } },
         auto_heading({ "gui.srq-blacklist" }),
-        { type = "flow", name = "auto_blacklist_flow", direction = "vertical", style_mods = { vertical_spacing = 2 } },
+        { type = "flow", name = "auto_blacklist_flow", direction = "vertical",
+          style_mods = { vertical_spacing = 2, horizontally_stretchable = true } },
       },
     },
   }
 
--- the Auto Research toggle's icon (the gear by the close button is the window's settings)
-gui.auto_sprite = layouts and "utility/reset_white" or "flib_settings_white"
+-- the Auto Research toggle's icon: the game's white science flask (the gear by the close button is the settings)
+gui.auto_sprite = "utility/technology_white"
 
 gui.base_template = {
   {
@@ -1441,7 +1626,7 @@ gui.base_template = {
       style_mods = { horizontal_spacing = 12 },
       {
         type = "flow",
-        style_mods = { vertical_spacing = 12, width = 72 * 7 + 12 },
+        style_mods = { vertical_spacing = 12, width = 72 * 7 + 12, vertically_stretchable = true },
         direction = "vertical",
         {
           type = "frame",
@@ -1451,7 +1636,7 @@ gui.base_template = {
             type = "frame",
             style = "subheader_frame",
             style_mods = { horizontally_stretchable = true },
-            { type = "label",        style = "subheader_caption_label", caption = { "gui-technology-queue.title" } },
+            { type = "label",        style = "subheader_caption_label", caption = { "gui.srq-queue" } },
             { type = "empty-widget", style = "flib_horizontal_pusher" },
             {
               type = "label",
@@ -1497,12 +1682,21 @@ gui.base_template = {
               style = "slot_table",
               column_count = 7,
             },
+            -- (while the queue is empty: one row, saying how to fill it)
+            {
+              type = "label",
+              name = "queue_empty_label",
+              caption = { "gui.srq-queue-empty" },
+              visible = false,
+              style_mods = { single_line = false, width = 72 * 6, height = 96, left_margin = 16, vertical_align = "center" },
+            },
           },
         },
         {
           type = "frame",
           style = "inside_shallow_frame",
           direction = "vertical",
+          style_mods = { vertically_stretchable = true },  -- (takes the queue's second row while that is empty)
           {
             type = "frame",
             style = "subheader_frame",
@@ -1516,6 +1710,7 @@ gui.base_template = {
             { type = "empty-widget", style = "flib_horizontal_pusher" },
             {
               type = "sprite-button",
+              name = "tech_info_graph_button",
               style = "tool_button",
               sprite = "urq_open_in_graph",
               tooltip = { "gui.urq-open-in-graph" },
@@ -1538,36 +1733,35 @@ gui.base_template = {
                 name = "tech_info_main_slot_frame",
                 style = "deep_frame_in_shallow_frame",
               },
+              -- (the description, and the cost under it: beside the technology's slot, which is taller than one
+              -- line of text)
               {
                 type = "flow",
                 direction = "vertical",
+                style_mods = { horizontally_stretchable = true, vertical_spacing = 4 },
                 {
                   type = "label",
                   name = "tech_info_description_label",
                   style_mods = { single_line = false, horizontally_stretchable = true },
                   caption = "",
                 },
-              },
-            },
-            {
-              type = "line",
-              direction = "horizontal",
-              style_mods = { left_margin = -2, right_margin = -2, top_margin = 4 },
-            },
-            { type = "label", style = "heading_2_label", caption = { "gui-technology-preview.unit-ingredients" } },
-            {
-              type = "flow",
-              style = "horizontal_flow",
-              {
-                type = "frame",
-                style = "slot_group_frame",
+                { type = "label", style = "heading_2_label", caption = { "gui-technology-preview.unit-ingredients" } },
                 {
-                  type = "table",
-                  name = "tech_info_ingredients_table",
-                  column_count = 11,
+                  type = "flow",
+                  style = "horizontal_flow",
+                  style_mods = { vertical_align = "center" },
+                  {
+                    type = "frame",
+                    style = "slot_group_frame",
+                    {
+                      type = "table",
+                      name = "tech_info_ingredients_table",
+                      column_count = 8,
+                    },
+                  },
+                  { type = "label", name = "tech_info_ingredients_count_label", style = "count_label" },
                 },
               },
-              { type = "label", name = "tech_info_ingredients_count_label", style = "count_label" },
             },
             {
               type = "flow",
@@ -1681,7 +1875,7 @@ if layouts then
     name = "settings_button",
     style = "frame_action_button",
     sprite = "fstd-settings",
-    tooltip = "Settings",
+    tooltip = { "?", { "fstd.settings" }, { "gui.srq-settings" } },
     tags = { fstd_settings = "urq_window" },
     handler = { [defines.events.on_gui_click] = gui.toggle_settings },
   })

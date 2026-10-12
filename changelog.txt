@@ -1,4 +1,23 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.4.0
+Date: 2026-10-12
+  Changes:
+    - Auto Research's drawer and the settings sit on the window's edges again, also after "Reset size and place", a
+      middle click on the title bar or a change of screen size or GUI scale (they were drawn over the window).
+    - Auto Research's toggle is a science flask, lit while its panel shows; its tooltip says so, and whether auto
+      research is on.
+    - The settings are headed with the mod's name and say what every mod's settings say (fse-std's texts: Docked,
+      Theme..., "Reset size and place" for "Centre it"). They end on a seam between the technology slots, not across one.
+    - The queue's panel is "Queue" (the window is "Research queue").
+    - Docked, the Auto Research drawer runs from the window's panels' top to their bottom, on every theme.
+    - Goals and blacklist in columns: names one width, the move and remove buttons lined up under each other.
+    - "Filter the list to these packs" (fits on monospace themes); an empty queue keeps no room for a scroll bar.
+    - Goals: tool-sized move and remove buttons; the first goal has no "up", the last no "down".
+    - The cost sits beside the technology, under its description; an empty queue takes one row, with a hint.
+    - Every text of the settings and questions can be translated (locale).
+    - On themes with dark buttons, the queue's and goals' tool icons and the graph button's are white.
+    - Needs fse-std 0.7.0+ for its themes (optional as before).
+---------------------------------------------------------------------------------------------------
 Version: 1.3.1
 Date: 2026-10-12
   Changes:

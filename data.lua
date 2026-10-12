@@ -272,3 +272,24 @@ styles.urq_search_textfield = {
 --     effects = {},
 --   },
 -- })
+
+-- white copies of the dark icons on SRQ's tool buttons, for dark themes (fse-std): gui.lua's icon()
+do
+  local us = data.raw["utility-sprites"].default
+  for _, n in ipairs({ "variations_tool_icon", "pause", "hint_arrow_up", "hint_arrow_down" }) do
+    local s = us[n] and table.deepcopy(us[n])
+    if s then
+      s.type, s.name, s.invert_colors = "sprite", "srq-white-" .. n, true
+      data:extend({ s })
+    end
+  end
+  data:extend({ {
+    type = "sprite",
+    name = "srq-white-urq_open_in_graph",
+    filename = "__smart-research-queue__/graphics/graph.png",
+    size = 32,
+    mipmap_count = 2,
+    flags = { "gui-icon" },
+    invert_colors = true,
+  } })
+end

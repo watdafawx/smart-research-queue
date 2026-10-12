@@ -47,13 +47,32 @@ script.on_event(defines.events.on_tick, function(e)
   local screen = player.gui.screen
   local function log(t) helpers.write_file("srq-gui.txt", t .. "\n", true) end
   local function shoot(file) game.take_screenshot({ player = player, show_gui = true, path = file, resolution = { 2560, 1440 }, zoom = 1 }) end
+  -- (the drawer and settings stuck to the window's edges, not left where the window was before it was centred)
+  local function beside(what)
+    local win, d = screen.urq_window, screen.urq_window__auto
+    local sc = player.display_scale
+    if not (win and d and d.visible) then return what .. ": no drawer" end
+    local wx, wy, dx, dy = win.location.x, win.location.y, d.location.x, d.location.y
+    local ok = math.abs(dx - (wx + (1140 - 8) * sc)) <= 2 and math.abs(dy - (wy + 42 * sc)) <= 2
+    local res = player.display_resolution
+    local mid = math.abs((wx + (1140 + 352 - 8) * sc / 2) - res.width / 2) <= 2
+    return string.format("%s: drawer beside %s, centred %s (window %d,%d drawer %d,%d)", what, tostring(ok),
+      tostring(mid), wx, wy, dx, dy)
+  end
   if themed and e.tick == 210 then
     helpers.write_file("srq-gui.txt", "", false)
     log("drawer: " .. tostring(screen.urq_window__auto ~= nil and screen.urq_window__auto.visible))
+    log(beside("opened"))
     log("gear: " .. tostring(screen.urq_window and #screen.urq_window.children > 0))
     remote.call("srq", "settings", 1)
   elseif themed and e.tick == 215 then
     log("settings: " .. tostring(screen.urq_window__menu ~= nil) .. ", window still open: " .. tostring(screen.urq_window.visible))
+    local m, win = screen.urq_window__menu, screen.urq_window
+    if m then  -- (under the title bar's right end: its right edge 8 units in from the window's)
+      local sc = player.display_scale
+      log("settings at the right end: " .. tostring(math.abs((m.location.x + 300 * sc) - (win.location.x + (1140 - 8) * sc)) <= 2
+        and m.location.y > win.location.y))
+    end
   elseif themed and e.tick == 230 then
     shoot("srq-gui-settings.png")
   elseif themed and e.tick == 260 then
@@ -77,7 +96,37 @@ script.on_event(defines.events.on_tick, function(e)
   elseif themed and e.tick == 385 then
     log("hidden: drawer hidden " .. tostring(not (screen.urq_window__auto and screen.urq_window__auto.visible)))
   end
-  if e.tick == (themed and 400 or 260) then
+  -- moved away, then "Reset size and place": the drawer comes along
+  if themed and e.tick == 390 then
+    remote.call("srq", "show", 1)
+    screen.urq_window.location = { 5, 5 }
+    remote.call("srq", "center", 1)
+  elseif themed and e.tick == 392 then
+    log(beside("centred again"))
+  end
+  -- the queue emptied (auto research off, so it stays empty): one row and a hint
+  local empty_at = themed and 400 or 200
+  if e.tick == empty_at then
+    remote.call("srq", "set", player.force.name, "enabled", false)
+    remote.call("srq", "clear", player.force.name)
+    remote.call("srq", "show", 1, "logistics-2")
+  elseif e.tick == empty_at + 5 then
+    log("empty queue: " .. #remote.call("srq", "queue", player.force.name) .. " queued")
+  elseif e.tick == empty_at + 10 then
+    shoot("srq-gui-empty.png")
+  end
+  -- a theme of fse-std's own shapes (a taller title bar): the drawer and the settings fit it too
+  local crt = themed and remote.interfaces["fse-std"] and remote.interfaces["fse-std"].set_theme
+  if crt and e.tick == 440 then
+    remote.call("fse-std", "set_theme", 1, "crt")
+    remote.call("srq", "settings", 1)
+  elseif crt and e.tick == 445 then
+    shoot("srq-gui-settings-crt.png")
+  elseif crt and e.tick == 470 then
+    remote.call("srq", "settings", 1)
+    remote.call("fse-std", "set_theme", 1, "vanilla")
+  end
+  if e.tick == (themed and 480 or 260) then
     helpers.write_file("srq-gui-done.txt", "done")
   end
 end)

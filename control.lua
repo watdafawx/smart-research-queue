@@ -512,7 +512,29 @@ remote.add_interface("srq", {
     local pick, goal = auto.pick(force_table)
     return { pick = pick and pick.name, goal = goal and goal.name }
   end,
+  -- the remote planner (auto-research.lua): what it may pick from, and its answer to "srq/need_pick"
+  candidates = function(force_name)
+    local force_table = force_table_of(force_name)
+    return force_table and auto.candidates(force_table)
+  end,
+  pick_remote = function(force_name, tech_name)
+    local force_table = force_table_of(force_name)
+    if force_table then
+      force_table.remote_pick = tech_name or false
+      util.schedule_force_update(force_table.force)
+    end
+  end,
 })
+
+-- the remote planner didn't answer in time: look again, the strategy picks
+script.on_nth_tick(30, function()
+  for _, force_table in pairs(storage.forces) do
+    if force_table.remote_asked and game.tick - force_table.remote_asked >= auto.PLANNER_WAIT
+        and force_table.force.valid then
+      util.schedule_force_update(force_table.force)
+    end
+  end
+end)
 
 -- Drag to reorder (fse loader): chained onto the handlers above, so it goes last
 local drag = require("drag")

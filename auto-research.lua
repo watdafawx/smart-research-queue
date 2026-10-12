@@ -270,6 +270,98 @@ function auto.pick(force_table)
   return least_effort(candidates, config)
 end
 
+-- ---- the remote planner -----------------------------------------------------------------------------------------
+-- A program outside the game (fse loader + fse-bridge, any language) can pick auto research instead of the strategy:
+-- while one polls the fse web API as "srq-planner", a pick is asked for with the event "srq/need_pick" {force}, and
+-- the planner answers with remote.call("srq", "pick_remote", force, name) (reading "srq", "candidates" first).
+-- No planner, no answer within 2 s, or a pick that isn't allowed: the strategy picks, as without one.
+
+auto.PLANNER = "srq-planner"
+auto.PLANNER_WAIT = 120
+
+function auto.planner_connected()
+  local iface = remote.interfaces["fse-remote"]
+  return iface ~= nil and iface.connected ~= nil and remote.call("fse-remote", "connected", auto.PLANNER) == true
+end
+
+--- What auto research may start now, for the planner to choose from.
+--- @param force_table ForceTable
+function auto.candidates(force_table)
+  local config = force_table.auto
+  local force = force_table.force
+  local producing = config.producing_only and auto.producing(force) or nil
+  local skip = force_table.auto_skip or {}
+  local toward = {}
+  for i, goal in pairs(config.goals) do
+    toward[goal] = toward[goal] or i
+    for _, name in pairs(ancestors.of(goal) or {}) do
+      toward[name] = toward[name] or i
+    end
+  end
+  local out = {}
+  for name, technology in pairs(force.technologies) do
+    if not skip[name] and auto.can_research(technology, config, producing) then
+      local packs = {}
+      for _, ingredient in pairs(technology.research_unit_ingredients) do
+        packs[#packs + 1] = { name = ingredient.name, amount = ingredient.amount }
+      end
+      local unlocks, effects = 0, 0
+      for _, effect in pairs(technology.prototype.effects) do
+        effects = effects + 1
+        if effect.type == "unlock-recipe" then
+          unlocks = unlocks + 1
+        end
+      end
+      out[#out + 1] = {
+        name = name,
+        level = technology.level,
+        count = flib_technology.get_research_unit_count(technology),
+        ticks = technology.research_unit_energy,
+        packs = packs,
+        unlocks = unlocks,
+        effects = effects,
+        infinite = auto.is_infinite(technology),
+        effort = auto.effort(technology, config),
+        goal = toward[name] and config.goals[toward[name]] or nil,
+      }
+    end
+  end
+  return { goals = config.goals, goals_only = config.goals_only, strategy = config.strategy, candidates = out }
+end
+
+--- The planner's pick if it gave one, else ask it and wait (`waiting`), else the strategy's.
+--- @param force_table ForceTable
+--- @return LuaTechnology?, boolean waiting
+local function choose(force_table)
+  local force = force_table.force
+  local answer = force_table.remote_pick
+  if answer ~= nil then
+    force_table.remote_pick, force_table.remote_asked = nil, nil
+    local config = force_table.auto
+    local technology = answer and force.technologies[answer]
+    if technology and not (force_table.auto_skip or {})[answer]
+        and auto.can_research(technology, config, config.producing_only and auto.producing(force) or nil) then
+      if config.announce then
+        force.print({ "message.srq-planner-picked", technology.localised_name })
+      end
+      return technology, false
+    end
+    return (auto.pick(force_table)), false
+  end
+  if auto.planner_connected() then
+    local asked = force_table.remote_asked
+    if not asked then
+      force_table.remote_asked = game.tick
+      remote.call("fse-remote", "emit", "srq/need_pick", { force = force.name })
+      return nil, true
+    elseif game.tick - asked < auto.PLANNER_WAIT then
+      return nil, true
+    end
+    force_table.remote_asked = nil -- no answer in time
+  end
+  return (auto.pick(force_table)), false
+end
+
 --- @param queue ResearchQueue
 local function has_auto(queue)
   local node = queue.head
@@ -318,18 +410,19 @@ function auto.fill(force_table, reconsider)
     end
     return
   end
+  local pick, waiting
   if startable and startable.auto then
     if not (reconsider and config.allow_switching) then
       return
     end
-    local pick = auto.pick(force_table)
-    if pick and pick.name == startable.technology.name then
+    pick, waiting = choose(force_table)
+    if waiting or (pick and pick.name == startable.technology.name) then
       return
     end
     remove_auto(queue)
+  else
+    pick = choose(force_table)
   end
-
-  local pick = auto.pick(force_table)
   if not pick then
     return
   end

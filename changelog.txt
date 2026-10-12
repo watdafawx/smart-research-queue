@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.3.0
+Date: 2026-10-12
+  Changes:
+    - Remote planner (FSE loader + fse-bridge 0.2): a program outside the game can pick auto research
+      (remote/planner.py, any language); without an answer in 2 s the strategy picks as before.
+    - remote.call("srq", "candidates", force) and ("srq", "pick_remote", force, name).
+---------------------------------------------------------------------------------------------------
 Version: 1.2.0
 Date: 2026-10-11
   Changes:

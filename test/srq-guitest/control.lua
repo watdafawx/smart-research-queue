@@ -126,7 +126,30 @@ script.on_event(defines.events.on_tick, function(e)
     remote.call("srq", "settings", 1)
     remote.call("fse-std", "set_theme", 1, "vanilla")
   end
-  if e.tick == (themed and 480 or 260) then
+  -- fse-std 0.8's window scale: the player's Window size at 150 %, the window (and its drawer) drawn bigger, centred
+  -- and on the screen, in the layout for the room that leaves (fewer rows and columns where it needs them)
+  local scaled = themed and remote.interfaces["fse-std"] and remote.interfaces["fse-std"].set_window_scale
+  if scaled and e.tick == 480 then
+    remote.call("fse-std", "set_window_scale", 1, 150)
+    remote.call("srq", "show", 1, "logistics-2")
+  elseif scaled and e.tick == 490 then
+    local win, d = screen.urq_window, screen.urq_window__auto
+    local l = remote.call("srq", "layout", 1) or {}
+    local f = win.tags.fstd_scale or 1
+    local sc, res = player.display_scale * f, player.display_resolution
+    local w, h = l.w * sc, l.h * sc
+    local right = win.location.x + w
+    if d and d.visible and not l.over then right = d.location.x + 352 * sc end
+    local on = win.location.x >= 0 and win.location.y >= 0 and right <= res.width + 1 and win.location.y + h <= res.height + 1
+    log(string.format("scale 150: drawn at %s, %d rows, %d+%d columns, drawer %s, on the screen %s (%d,%d to %d,%d on %dx%d)",
+      tostring(f), l.rows, l.qc, l.tc, l.over and "inside" or "beside", tostring(on), win.location.x, win.location.y,
+      right, win.location.y + h, res.width, res.height))
+  elseif scaled and e.tick == 495 then
+    shoot("srq-gui-scale150.png")
+  elseif scaled and e.tick == 520 then
+    remote.call("fse-std", "set_window_scale", 1, 100)
+  end
+  if e.tick == (themed and 530 or 260) then
     helpers.write_file("srq-gui-done.txt", "done")
   end
 end)

@@ -10,6 +10,9 @@ if has_std then
   input = require("__fse-std__/input")
 end
 
+--- (gui.lua sets it: a slot whose style was swapped, at its window's scale again)
+M.rescale = function(_) end
+
 function M.active()
   return has_std and input.native()
 end
@@ -51,6 +54,7 @@ function M.register(on_drop, reset)
       tags.srq_gap, tags.srq_style = true, source.style.name
       source.tags = tags
       source.style = "srq_slot_gap"
+      M.rescale(source)
       local list = {}
       for i, child in ipairs(source.children) do
         if child.visible then
@@ -67,6 +71,7 @@ function M.register(on_drop, reset)
         source.style = tags.srq_style or source.style.name
         tags.srq_gap, tags.srq_style = nil, nil
         source.tags = tags
+        M.rescale(source)
         local children = source.children
         for _, i in ipairs(hidden[player.index] or {}) do
           if children[i] then children[i].visible = true end

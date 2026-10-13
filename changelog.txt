@@ -1,4 +1,16 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.5.0
+Date: 2026-10-13
+  Changes:
+    - fse-std 0.8's window scale: the window is drawn at fse-std's "Window size" (or its own Size, in its settings
+      after Docked), on top of the game's GUI scale, and is centred at that size (at 150 % it ended below the screen).
+    - On a small screen or at a large GUI scale the window takes fewer rows and columns instead of being drawn tiny:
+      at the game's GUI scale 200 % on 2560 x 1440 it shows at 100 %, whole, with the Auto Research drawer beside it.
+      When even the fewest don't leave room beside it, the drawer opens inside the window, over the technology list
+      (its toggle shows and hides it). It changes with the screen, the GUI scale and the window's size.
+    - Slots that change state, queue slots added later and a dragged slot keep the window's scale.
+    - Needs fse-std 0.8.0+ for its themes (optional as before).
+---------------------------------------------------------------------------------------------------
 Version: 1.4.0
 Date: 2026-10-12
   Changes:

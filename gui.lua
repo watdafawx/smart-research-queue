@@ -13,23 +13,138 @@ local gui_util = require("gui-util")
 local research_queue = require("research-queue")
 
 -- themes (fse-std 0.6+, optional): the window in the player's theme from fse-std's theme window
-local theme
+local theme, window_lib
 if script.active_mods["fse-std"] then
   local ok, t = pcall(require, "__fse-std__/theme")
   theme = ok and t.adopt and t or nil
-  if theme then pcall(require, "__fse-std__/window") end  -- (theme.confirm opens its question with it)
+  if theme then  -- (theme.confirm opens its question with it; 0.8: the window's Size)
+    local ok2, w = pcall(require, "__fse-std__/window")
+    window_lib = ok2 and type(w) == "table" and w or nil
+  end
 end
 
 -- (elements rebuilt or restyled after the window was themed: themed too, only that part of the window)
 local function adopt(elem)
   if theme and elem and elem.valid then theme.adopt(elem) end
 end
+
+-- Window scale (fse-std 0.8+): the window is drawn at a scale of its own on top of the game's GUI scale. Built in GUI
+-- units at 100 % as before; pixel maths (centring) times its scale; sizes set later through theme.style, or scaled
+-- again (scale_tree). Without it (no fse-std, or an older one) everything is at 100 %.
+local scaling = theme ~= nil and theme.scale_of ~= nil and theme.window_scale ~= nil and theme.style ~= nil
+  and theme.scale_tree ~= nil and window_lib ~= nil and window_lib.size_setting ~= nil
+--- @param elem LuaGuiElement
+--- @return number
+local function scale_of(elem)
+  return scaling and theme.scale_of(elem) or 1
+end
+-- (sizes in GUI units at 100 %, set on an element after the window was built: at its window's scale)
+--- @param elem LuaGuiElement
+--- @param values table
+local function set_style(elem, values)
+  if scaling then
+    theme.style(elem, values)
+  else
+    for k, v in pairs(values) do elem.style[k] = v end
+  end
+end
+-- (elements whose styles were swapped or sizes set since the window was scaled: at its scale again)
+--- @param elem LuaGuiElement?
+local function rescale(elem)
+  if scaling and elem and elem.valid then theme.scale_tree(elem) end
+end
 -- The window's layout as our other mods' (fse/README.md, "A window's layout"), with fse-std 0.6.7+: its settings behind
 -- a gear by the close button, Auto Research as a drawer on its right edge ("Docked" in the settings; unticked, a
 -- column inside it as before), clearing the queue and un-researching ask first. The window gets a known size for it.
 local layouts = theme ~= nil and theme.menu ~= nil
+drag.rescale = rescale
 local WIN_W, WIN_H, AUTO_W = 1140, 806, 352  -- (GUI units: the window, and what the Auto Research column adds)
 local util = require("util")
+
+-- The window's layout for the room it has. At its full size (7 queue columns, 8 technology columns, 7 rows of
+-- technologies) it needs 1140 x 806 GUI units and the drawer beside it, which doesn't fit a 2560 x 1440 screen at the
+-- game's GUI scale 200 % (fse-std would draw it at 75 %). So at the scale the player wants (the window's Size, else
+-- fse-std's Window size) it takes fewer rows and columns; when even the fewest don't fit with the drawer beside it,
+-- the drawer goes inside the window (over the technology list, its toggle shows and hides it); only when nothing
+-- fits it is drawn smaller (the largest step at which one does).
+local COLUMNS = { { 7, 8 }, { 7, 7 }, { 7, 6 }, { 6, 6 }, { 6, 5 }, { 5, 5 } }  -- (queue, technologies), best first
+local ROWS_MIN, ROWS_MAX = 5, 7
+local FULL = { rows = 7, qc = 7, tc = 8, f = 1 }
+--- the window's width (GUI units at 100 %) for qc queue and tc technology columns (1140 at 7 and 8)
+local function win_w(qc, tc) return 24 + 72 * qc + 12 + 12 + 72 * tc + 12 end
+--- its height for rows rows of technologies (806 at 7)
+local function win_h(rows) return 106 + 100 * rows end
+
+--- @param rw number GUI units of screen across (at the scale tried)
+--- @param rh number GUI units of screen down
+--- @param docked boolean Auto Research as a drawer (else a column inside the window)
+--- @return {rows: integer, qc: integer, tc: integer, over: boolean?}?
+local function fit_columns(rw, rh, docked)
+  local rows = math.max(ROWS_MIN, math.min(ROWS_MAX, math.floor((rh - 106) / 100)))
+  if win_h(rows) > rh then return nil end
+  local extra = docked and (AUTO_W - 8) or AUTO_W  -- (the drawer beside it, or the column in it)
+  for _, c in ipairs(COLUMNS) do
+    if win_w(c[1], c[2]) + extra <= rw then return { rows = rows, qc = c[1], tc = c[2] } end
+  end
+  if docked then  -- (the drawer inside the window, over the technology list)
+    for _, c in ipairs(COLUMNS) do
+      if win_w(c[1], c[2]) <= rw then return { rows = rows, qc = c[1], tc = c[2], over = true } end
+    end
+  end
+end
+
+--- the layout the window gets now: rows, columns, the drawer inside or not, its size (w, h) and scale (f)
+--- @param player LuaPlayer
+--- @param docked boolean
+--- @return {rows: integer, qc: integer, tc: integer, over: boolean?, w: integer, h: integer, f: number}
+local function pick_layout(player, docked)
+  local l
+  if scaling then
+    local _, want = theme.window_scale(player, "urq_window")
+    local steps = (theme.themes and theme.themes.SCALE_STEPS) or { 50, 60, 75, 90, 100, 110, 125, 150, 175, 200 }
+    local res, ds = player.display_resolution, player.display_scale
+    for i = #steps, 1, -1 do  -- (the scale it wants, else the largest step below it at which a layout fits)
+      local f = steps[i] / 100
+      if f <= want + 0.001 then
+        l = fit_columns(math.floor((res.width - 16) / (ds * f)), math.floor((res.height - 16) / (ds * f)), docked)
+        if l then break end
+      end
+    end
+    if not l then
+      local last = COLUMNS[#COLUMNS]
+      l = { rows = ROWS_MIN, qc = last[1], tc = last[2], over = docked or nil }
+    end
+  else
+    l = { rows = FULL.rows, qc = FULL.qc, tc = FULL.tc }
+  end
+  l.w = win_w(l.qc, l.tc) + (docked and 0 or AUTO_W)
+  l.h = win_h(l.rows)
+  l.f = 1
+  if scaling then  -- (the scale fse-std draws it at: this size and the drawer beside it, capped to the screen)
+    local beside = docked and not l.over and (AUTO_W - 8) or 0
+    l.f = theme.window_scale(player, "urq_window", { width = l.w + beside, height = l.h })
+  end
+  return l
+end
+
+--- @param a table?
+--- @param b table?
+local function same_layout(a, b)
+  return a ~= nil and b ~= nil and a.rows == b.rows and a.qc == b.qc and a.tc == b.tc and (a.over or false) == (b.over or false)
+end
+
+-- the templates below, for a layout (their columns and sizes)
+--- @param tree table
+--- @param name string
+--- @return table?
+local function find(tree, name)
+  if type(tree) ~= "table" then return nil end
+  if tree.name == name then return tree end
+  for _, c in ipairs(tree) do
+    local f = find(c, name)
+    if f then return f end
+  end
+end
 
 -- SRQ's dark tool button icons, white where the theme's buttons have light text (its dark buttons: data.lua makes
 -- the white copies)
@@ -60,9 +175,11 @@ local function center_window(window, docked)
     return
   end
   local player = game.get_player(window.player_index) --[[@as LuaPlayer]]
-  local sc, res = player.display_scale, player.display_resolution
-  local w = docked and (WIN_W + AUTO_W - 8) or (WIN_W + AUTO_W)
-  window.location = { math.max(0, math.floor((res.width - w * sc) / 2)), math.max(0, math.floor((res.height - WIN_H * sc) / 2)) }
+  -- (the window's size in GUI units at 100 %: drawn at its own scale times the game's)
+  local sc, res = player.display_scale * scale_of(window), player.display_resolution
+  local size = window.tags.srq_size or { WIN_W, WIN_H }
+  local w = size[1] + (docked and (AUTO_W - 8) or 0)
+  window.location = { math.max(0, math.floor((res.width - w * sc) / 2)), math.max(0, math.floor((res.height - size[2] * sc) / 2)) }
   theme.follow(window)
 end
 
@@ -105,7 +222,7 @@ local function fit_drawer(window, drawer)
   if not (drawer and drawer.valid and drawer.tags.fstd_attach) then return end
   local look = game_look(game.get_player(window.player_index) --[[@as LuaPlayer]]) and "game" or "own"
   local along = TITLE_H[look]
-  local h = WIN_H - 12 - along
+  local h = (window.tags.srq_size or { WIN_W, WIN_H })[2] - 12 - along
   local tags = drawer.tags
   local a = tags.fstd_attach
   if a.along ~= along or a.h ~= h then
@@ -114,7 +231,7 @@ local function fit_drawer(window, drawer)
     drawer.tags = tags
     theme.apply(drawer, "inset", { width = AUTO_W, height = h, padding = 4 })
     for _, c in pairs(drawer.children) do  -- (the Auto Research frame inside: the drawer's height less its padding)
-      if c.name == "auto_frame" then c.style.height = h - 16 end
+      if c.name == "auto_frame" then set_style(c, { height = h - 16 }) end
     end
     theme.follow(window)
   end
@@ -287,20 +404,26 @@ function gui.new(player)
   end
 
   local docked = layouts and not (storage.srq_inside and storage.srq_inside[player.index])
+  local layout = pick_layout(player, docked)
   --- @type GuiElems
-  local elems = flib_gui.add(player.gui.screen, docked and gui.docked_template or gui.base_template)
+  local elems = flib_gui.add(player.gui.screen, gui.template(docked, layout))
   if layouts then  -- (a known size: what's stuck to the window, and its settings, are placed by it)
     local window = elems.urq_window
-    local w = docked and WIN_W or WIN_W + AUTO_W
-    window.style.width, window.style.height = w, WIN_H
+    local w, h = layout.w, layout.h
+    window.style.width, window.style.height = w, h
     local tags = window.tags
-    tags.fstd_window, tags.fstd_tweak, tags.srq_size = "urq_window", { width = w, height = WIN_H }, { w, WIN_H }
+    tags.fstd_window, tags.fstd_tweak, tags.srq_size = "urq_window", { width = w, height = h }, { w, h }
+    if scaling then  -- (its scale, worked out with the drawer beside it: fse-std would count it only once it shows)
+      tags.fstd_scale, tags.fstd_scaled = layout.f, layout.f ~= 1 or nil
+    end
     window.tags = tags
+    if scaling and theme.forget_scales then theme.forget_scales() end
     window.auto_center = false  -- (centred by us, before the drawer is placed from its location)
-    center_window(window, docked)
-    if docked then  -- (Auto Research: a drawer on the window's right edge)
-      local drawer = theme.attach(window, "right", { size = { AUTO_W, WIN_H - 12 - TITLE_H.game },
-        along = TITLE_H.game, overlap = 8, role = "inset", direction = "vertical", padding = 4, name = "urq_window__auto" })
+    center_window(window, docked and not layout.over)
+    if docked then  -- (Auto Research: a drawer on the window's right edge; no room beside it: inside, over the list)
+      local drawer = theme.attach(window, "right", { size = { AUTO_W, h - 12 - TITLE_H.game },
+        along = TITLE_H.game, overlap = layout.over and (AUTO_W + 12) or 8, role = "inset", direction = "vertical",
+        padding = 4, name = "urq_window__auto" })
       drawer.visible = false
       for k, v in pairs(flib_gui.add(drawer, gui.auto_column)) do
         elems[k] = v
@@ -308,14 +431,14 @@ function gui.new(player)
       -- (the drawer is the panel: no second one inside it)
       local auto = elems.auto_frame
       auto.style = "invisible_frame"
-      auto.style.width, auto.style.height = 340, WIN_H - 12 - TITLE_H.game - 16
+      auto.style.width, auto.style.height = 340, h - 12 - TITLE_H.game - 16
       fit_drawer(window, drawer)
     end
   end
   if theme then  -- (SRQ's own styles, which adopt doesn't know: the lists' black slot grid, the search field)
     theme.apply(elems.queue_scroll_pane, "scroll", { padding = 0, height = 100 * 2, horizontally_stretchable = true })
-    theme.apply(elems.techs_scroll_pane, "scroll",
-      { padding = 0, height = 100 * 7, width = 72 * 8 + 12, horizontally_stretchable = true })
+    theme.apply(elems.techs_scroll_pane, "scroll", { padding = 0, height = 100 * layout.rows, width = 72 * layout.tc + 12,
+      horizontally_stretchable = true })
     theme.apply(elems.search_textfield, "field", { top_margin = -3, right_padding = 3 })
   end
 
@@ -347,7 +470,8 @@ function gui.new(player)
       research_state_counts = {},
       search_open = false,
       search_query = "",
-      auto_visible = true,
+      auto_visible = not layout.over,  -- (inside the window it covers the technology list: shown when asked for)
+      layout = layout,  -- (rows and columns for the room the window has: pick_layout)
       queue_rows = nil,  -- (the queue list's height in rows: 1 while it's empty, else 2)
       pack_filter = false,
       --- @type TechnologyAndLevel?
@@ -355,7 +479,8 @@ function gui.new(player)
     },
   }
   storage.guis[player.index] = self
-  gui_util.toggle_frame_action_button(elems.auto_toggle_button, gui.auto_sprite, true)
+  gui_util.toggle_frame_action_button(elems.auto_toggle_button, gui.auto_sprite, self.state.auto_visible)
+  elems.auto_frame.visible = self.state.auto_visible
 
   gui.update(self)
 
@@ -510,6 +635,76 @@ function gui.show(self, select_tech)
   if not self.state.pinned then
     self.player.opened = self.elems.urq_window
   end
+  gui.refit(self)
+end
+
+-- (gui.rebuild running: the new window's own refit doesn't rebuild it again)
+local reflowing = false
+
+--- the window at the scale it should have with what shows now (the drawer beside it counts only while it shows):
+--- fse-std draws it smaller when it doesn't fit the screen, and back (on_scale below hears it)
+--- @param self Gui
+function gui.refit(self)
+  if not (scaling and theme.refit) then return end
+  local window = self.elems.urq_window
+  if window.valid and window.visible then theme.refit(self.player, window, true) end
+end
+
+--- the window again, in the layout for the room it has now, when that changed (rows, columns, the drawer inside or
+--- beside it): returns true when it was rebuilt
+--- @param self Gui
+--- @return boolean?
+function gui.reflow(self)
+  if reflowing or not (self.elems.urq_window and self.elems.urq_window.valid) then return nil end
+  local docked = layouts and not (storage.srq_inside and storage.srq_inside[self.player.index])
+  if same_layout(pick_layout(self.player, docked), self.state.layout) then return false end
+  reflowing = true
+  local ok, err = pcall(gui.rebuild, self)
+  reflowing = false
+  if not ok then error(err) end
+  return true
+end
+
+--- the window built again (another layout): shown again if it was, on the same technology, pinned if it was
+--- @param self Gui
+function gui.rebuild(self)
+  local player = self.player
+  local visible = self.elems.urq_window.valid and self.elems.urq_window.visible
+  local state = self.state
+  local selected, pinned, auto_visible = state.selected, state.pinned, state.auto_visible
+  local over = state.layout and state.layout.over or false
+  local menu = player.gui.screen["urq_window__menu"] ~= nil  -- (the settings were open: a Size was picked there)
+  local new = gui.new(player)
+  if not new then return end
+  if (new.state.layout.over or false) == over and new.state.auto_visible ~= auto_visible then
+    gui.toggle_auto_panel(new)
+  end
+  if visible then
+    gui.show(new, selected and selected.technology.name or nil)
+    if pinned then gui.toggle_pinned(new) end
+    if menu then gui.toggle_settings(new) end
+  end
+end
+
+--- the screen's size or the game's GUI scale changed: the window in the layout for it, at the scale it should have,
+--- in the middle again
+--- @param self Gui
+function gui.on_screen_changed(self)
+  if not gui.reflow(self) then
+    gui.refit(self)
+    gui.center(self)
+  end
+end
+
+-- fse-std drew the window at another scale (the Window size setting, its Size, the screen): fewer rows and columns,
+-- or more, when that's what fits now; in the middle again
+if scaling and window_lib.on_scale then
+  window_lib.on_scale(function(player, name)
+    if name ~= "urq_window" then return end
+    local self = storage.guis and storage.guis[player.index]
+    if not (self and self.elems.urq_window.valid) then return end
+    if not gui.reflow(self) then gui.center(self) end
+  end)
 end
 
 --- @param self Gui
@@ -651,6 +846,36 @@ if theme then
       if self.elems.auto_frame.valid and self.elems.auto_frame.visible then gui.update_auto(self) end
     end
   end
+  -- (window scale, fse-std 0.8: the player's Window size or the window's Size changed. fse-std draws it at the new
+  -- scale first; then the layout for the room that leaves, even when the scale it is drawn at stayed the same)
+  if scaling then
+    local function reflow(player_index)
+      local self = storage.guis and storage.guis[player_index]
+      if self and self.elems.urq_window.valid then gui.reflow(self) end
+    end
+    local function after(event, fn)
+      local first = gui.theme_handlers[event]
+      gui.theme_handlers[event] = function(e)
+        if first then first(e) end
+        fn(e)
+      end
+    end
+    after(defines.events.on_runtime_mod_setting_changed, function(e)
+      if e.setting == "fstd-window-scale" and e.player_index then reflow(e.player_index) end
+    end)
+    if theme.handlers["fstd-scale-changed"] then
+      after("fstd-scale-changed", function(e) reflow(e.player_index) end)
+    end
+    local pick = window_lib.handlers and window_lib.handlers[defines.events.on_gui_selection_state_changed]
+    if pick then  -- (the Size drop-down in the settings: window.size_setting)
+      after(defines.events.on_gui_selection_state_changed, function(e)
+        local el = e.element
+        if not (el and el.valid and el.tags.fstd_scale_pick == "urq_window" and el.get_mod() == script.mod_name) then return end
+        pick(e)
+        reflow(e.player_index)
+      end)
+    end
+  end
 end
 
 --- @param self Gui
@@ -775,16 +1000,18 @@ function gui.update_queue(self)
     local is_selected = (selected.technology == technology and selected.level == level) or node == held
     if button then
       gui_util.move_to(button, queue_table, i)
-      gui_util.update_technology_slot(
+      if gui_util.update_technology_slot(
         button,
         technology,
         node.level,
         research_states[technology.name],
         research_queue.contains(queue, technology, level),
         is_selected
-      )
+      ) then
+        rescale(button)
+      end
     else
-      gui_util.technology_slot(
+      button = gui_util.technology_slot(
         queue_table,
         technology,
         level,
@@ -795,6 +1022,7 @@ function gui.update_queue(self)
         flib_technology.get_leveled_name(technology, level),
         i
       )
+      rescale(button)
     end
     node = node.next
   end
@@ -1083,14 +1311,16 @@ function gui.update_tech_list(self)
       if i ~= button.get_index_in_parent() then
         gui_util.move_to(button, techs_table, i)
       end
-      gui_util.update_technology_slot(
+      if gui_util.update_technology_slot(
         button,
         technology,
         level,
         research_states[technology.name],
         research_queue.contains(queue, technology, level),
         selected.technology == technology and selected.level == level
-      )
+      ) then
+        rescale(button)
+      end
       ::continue::
     end
   end
@@ -1119,6 +1349,7 @@ function gui.toggle_auto_panel(self)
   if self.state.auto_visible then
     gui.update_auto(self)
   end
+  gui.refit(self)  -- (the drawer beside the window: does it still fit?)
 end
 
 --- @param self Gui
@@ -1403,6 +1634,11 @@ function gui.toggle_settings(self)
       tooltip = { "gui.srq-docked-tooltip" },
       handler = { [defines.events.on_gui_checked_state_changed] = gui.on_docked },
     },
+  })
+  if scaling then  -- (the window's own Size: fse-std's drop-down, Default being the player's Window size)
+    window_lib.size_setting(m, "urq_window")
+  end
+  flib_gui.add(m, {
     {
       type = "checkbox",
       caption = { "mod-setting-name.urq-show-disabled-techs" },
@@ -1472,7 +1708,8 @@ end
 --- @param self Gui
 function gui.center(self)
   local window = self.elems.urq_window
-  center_window(window, self.elems.auto_frame.valid and self.elems.auto_frame.parent.tags.fstd_attach ~= nil)
+  local over = self.state.layout and self.state.layout.over
+  center_window(window, self.elems.auto_frame.valid and self.elems.auto_frame.parent.tags.fstd_attach ~= nil and not over)
 end
 
 --- @param self Gui
@@ -1626,6 +1863,7 @@ gui.base_template = {
       style_mods = { horizontal_spacing = 12 },
       {
         type = "flow",
+        name = "left_flow",
         style_mods = { vertical_spacing = 12, width = 72 * 7 + 12, vertically_stretchable = true },
         direction = "vertical",
         {
@@ -1886,6 +2124,33 @@ gui.docked_template = table.deep_copy(gui.base_template)
 do
   local body = gui.docked_template[1][2]
   tremove(body, #body)
+end
+
+-- the window's template for a layout (pick_layout): its lists' columns and rows, the columns of what's in the
+-- technology's details (as wide as the queue)
+local templates = {}
+--- @param docked boolean
+--- @param l {rows: integer, qc: integer, tc: integer}
+--- @return table
+function gui.template(docked, l)
+  local key = string.format("%s %d %d %d", tostring(docked), l.rows, l.qc, l.tc)
+  if templates[key] then return templates[key] end
+  local t = table.deep_copy(docked and gui.docked_template or gui.base_template)
+  local qc, tc, rows = l.qc, l.tc, l.rows
+  find(t, "left_flow").style_mods.width = 72 * qc + 12
+  find(t, "queue_table").column_count = qc
+  find(t, "queue_empty_label").style_mods.width = 72 * (qc - 1)
+  find(t, "tech_info_effects_table").column_count = math.floor((72 * qc + 12 - 36) / 40)  -- (12 at 7 columns)
+  for _, name in pairs({ "tech_info_prerequisites_table", "tech_info_descendants_table", "tech_info_upgrade_group_table" }) do
+    find(t, name).column_count = qc - 1
+  end
+  local pane = find(t, "techs_scroll_pane")
+  pane.style_mods.height, pane.style_mods.width = 100 * rows, 72 * tc + 12
+  find(t, "techs_table").column_count = tc
+  local auto = find(t, "auto_frame")
+  if auto then auto.style_mods.height = 100 * rows + 36 end
+  templates[key] = t
+  return t
 end
 
 flib_gui.add_handlers(gui, function(e, handler)

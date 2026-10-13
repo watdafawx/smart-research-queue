@@ -372,14 +372,20 @@ end
 --- @param research_state ResearchState
 --- @param in_queue boolean
 --- @param is_selected boolean?
+--- @return boolean restyled its style or its labels' were swapped (sizes back to the style's: scale it again)
 function gui_util.update_technology_slot(button, technology, level, research_state, in_queue, is_selected)
   local properties = gui_util.get_technology_slot_properties(technology, research_state)
   local tags = button.tags
-  if not tags.srq_gap then  -- (a slot being dragged is an empty cell until the drop)
+  local restyled = false
+  -- (a slot being dragged is an empty cell until the drop; the same style isn't set again: that would drop the sizes
+  -- fse-std's window scale gave it)
+  if not tags.srq_gap and button.style.name ~= properties.style then
     button.style = properties.style
+    restyled = true
   end
   button.toggled = is_selected or false
   if tags.research_state ~= research_state then
+    restyled = true
     if research_state == constants.research_state.researched then
       button.progressbar.visible = false
       button.progressbar.value = 0
@@ -421,6 +427,7 @@ function gui_util.update_technology_slot(button, technology, level, research_sta
   button.duration_label.visible = in_queue
 
   button.tags = tags
+  return restyled
 end
 
 return gui_util

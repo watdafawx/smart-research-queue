@@ -1,6 +1,6 @@
 local ancestors = require("ancestors")
 local format = require("__flib__.format")
-local math = require("__flib__.math")
+local math = setmetatable(require("__flib__.math"), { __index = math }) -- (flib 0.17 dropped Lua's own math from it)
 local flib_technology = require("__flib__.technology")
 
 local constants = require("constants")

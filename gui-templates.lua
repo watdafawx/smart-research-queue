@@ -87,7 +87,7 @@ function temp_flib_gui_templates.technology_slot(parent, technology, level, rese
   elseif researchTrigger ~= nil then
     local name = nil
     if researchTrigger.type == "mine-entity" then
-      name = "entity/" .. researchTrigger.entity
+      name = "entity/" .. (researchTrigger.entities and researchTrigger.entities[1] or researchTrigger.entity) -- (2.1: a list)
     elseif researchTrigger.type == "build-entity" then
       name = "entity/" .. researchTrigger.entity.name
     elseif researchTrigger.type == "capture-spawner" or researchTrigger.type == "capture-any-spawner" then

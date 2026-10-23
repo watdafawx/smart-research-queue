@@ -3,8 +3,8 @@ local drag = require("drag")
 local dictionary = require("__flib__.dictionary")
 local format = require("__flib__.format")
 local flib_gui = require("__flib__.gui")
-local math = require("__flib__.math")
-local table = require("__flib__.table")
+local math = setmetatable(require("__flib__.math"), { __index = math }) -- (flib 0.17 dropped Lua's own math from it)
+local table = setmetatable(require("__flib__.table"), { __index = table }) -- (flib 0.17 dropped Lua's own table from it)
 local flib_technology = require("__flib__.technology")
 
 local auto = require("auto-research")
@@ -1103,7 +1103,7 @@ function gui.update_tech_info(self)
   local ingredients_children = nil
   local researchTrigger = technology.prototype.research_trigger
   if #technology.research_unit_ingredients > 0 then
-    ingredients_children = table.map(technology.research_unit_ingredients, function(ingredient)
+    ingredients_children = table.mapped(technology.research_unit_ingredients, function(ingredient)
       return {
         type = "sprite-button",
         style = "transparent_slot",
@@ -1132,7 +1132,7 @@ function gui.update_tech_info(self)
     local label = { "technology-trigger." .. researchTrigger.type }
     if researchTrigger.type == "mine-entity" then
       base = "entity"
-      name = researchTrigger.entity
+      name = researchTrigger.entities and researchTrigger.entities[1] or researchTrigger.entity -- (2.1: a list)
     elseif researchTrigger.type == "build-entity" then
       base = "entity"
       name = researchTrigger.entity.name
@@ -1208,7 +1208,7 @@ function gui.update_tech_info(self)
     self,
     self.elems.tech_info_descendants_table,
     gui.on_tech_slot_click,
-    table.map(storage.technology_descendants[technology.name] or {}, function(descendant_name)
+    table.mapped(storage.technology_descendants[technology.name] or {}, function(descendant_name)
       return technologies[descendant_name]
     end)
   )
@@ -1219,7 +1219,7 @@ function gui.update_tech_info(self)
     self,
     self.elems.tech_info_upgrade_group_table,
     gui.on_tech_slot_click,
-    table.map(storage.technology_upgrade_groups[flib_technology.get_base_name(technology)] or {}, function(prototype)
+    table.mapped(storage.technology_upgrade_groups[flib_technology.get_base_name(technology)] or {}, function(prototype)
       return technologies[prototype.name]
     end)
   )

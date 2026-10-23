@@ -1,4 +1,4 @@
-local math = require("__flib__.math")
+local math = setmetatable(require("__flib__.math"), { __index = math }) -- (flib 0.17 dropped Lua's own math from it)
 
 local constants = require("constants")
 

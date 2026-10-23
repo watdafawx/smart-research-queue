@@ -29,8 +29,13 @@ shutil.copytree(MOD, MODS / "smart-research-queue", ignore=shutil.ignore_pattern
 shutil.copytree(HERE / "srq-guitest", MODS / "srq-guitest")
 if THEMED:
     shutil.copytree(ROOT.parent / "fse" / "mods" / "fse-std", MODS / "fse-std")
-if not list(MODS.glob("flib_*.zip")):
-    shutil.copy(max(PATHS["user_mods"].glob("flib_*.zip")), MODS)
+flib = max(PATHS["user_mods"].glob("flib_*.zip"))
+for old in MODS.glob("flib_*.zip"):  # (a game update can need a newer flib: keep only the user's newest)
+    if old.name != flib.name:
+        old.unlink()
+if not (MODS / flib.name).exists():
+    shutil.copy(flib, MODS)
+shutil.rmtree(MODS / "zzzz-test-skip-intro", ignore_errors=True)  # (remade for this game version when it starts)
 names = ["base", "elevated-rails", "quality", "space-age", "flib", "smart-research-queue", "srq-guitest"] + (
     ["fse-std"] if THEMED else [])
 (MODS / "mod-list.json").write_text(json.dumps({"mods": [{"name": n, "enabled": True} for n in names]

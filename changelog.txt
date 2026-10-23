@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.6.1
+Date: 2026-10-24
+  Bugfixes:
+    - Opening the window crashed on Factorio 2.1 with flib 0.17 (flib no longer passes Lua's own math and table functions through).
+    - Technologies unlocked by mining showed no icon and crashed the window on 2.1 (the trigger lists its entities now).
+---------------------------------------------------------------------------------------------------
 Version: 1.6.0
 Date: 2026-10-24
   Changes:

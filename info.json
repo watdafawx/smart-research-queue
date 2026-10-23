@@ -1,10 +1,10 @@
 {
   "name": "smart-research-queue",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "title": "Smart Research Queue",
   "description": "Ultimate Research Queue's GUI with Auto Research built in: queue technologies (prerequisites included) and, when the queue runs dry, pick the next research from your goals or by strategy, limited to the science packs you allow or actually produce. Fork of Ultimate Research Queue for 2.x and Auto Research (both MIT).",
   "author": "mtopfox",
-  "factorio_version": "2.0",
+  "factorio_version": "2.1",
   "dependencies": [
     "base >= 2.0.28",
     "flib >= 0.16.1",

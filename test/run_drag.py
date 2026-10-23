@@ -23,7 +23,7 @@ shutil.copytree(MOD, MODS / "smart-research-queue", ignore=shutil.ignore_pattern
 shutil.copytree(FSE / "mods" / "fse-std", MODS / "fse-std")
 shutil.copytree(HERE / ("srq-dragmanual" if MANUAL else "srq-dragtest"), MODS / "srq-dragtest")
 (MODS / "srq-dragtest" / "info.json").write_text(json.dumps({"name": "srq-dragtest", "version": "0.0.1",
-    "title": "srq drag test", "author": "mtopfox", "factorio_version": "2.0", "dependencies": ["base", "smart-research-queue"]}))
+    "title": "srq drag test", "author": "mtopfox", "factorio_version": "2.1", "dependencies": ["base", "smart-research-queue"]}))
 shutil.copy(max(PATHS["user_mods"].glob("flib_*.zip")), MODS)
 names = ["base", "elevated-rails", "quality", "space-age", "flib", "fse-std", "smart-research-queue", "srq-dragtest"]
 (MODS / "mod-list.json").write_text(json.dumps({"mods": [{"name": n, "enabled": True} for n in names]}))

@@ -1,6 +1,6 @@
 # Smart Research Queue
 
-A Factorio 2.0 mod: [Ultimate Research Queue](https://mods.factorio.com/mod/UltimateResearchQueue)'s research
+A Factorio 2.1 mod: [Ultimate Research Queue](https://mods.factorio.com/mod/UltimateResearchQueue)'s research
 queue with [Auto Research](https://mods.factorio.com/mod/auto-research) built in.
 
 - **Queue** technologies; their prerequisites come along. The first entries are mirrored into the game's own
